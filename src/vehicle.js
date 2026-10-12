@@ -20,14 +20,122 @@ export const TYPES = {
 const TRAFFIC_TYPES = ['sedan', 'sedan', 'sedan', 'taxi', 'van', 'muscle', 'sports'];
 export const randomTrafficType = () => pick(TRAFFIC_TYPES);
 
-const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.28, 12).rotateZ(Math.PI / 2);
-const hubGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.3, 6).rotateZ(Math.PI / 2);
+const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.28, 16).rotateZ(Math.PI / 2);
+const hubGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.3, 10).rotateZ(Math.PI / 2);
 const tireMat = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 });
-const hubMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.8, roughness: 0.3 });
-const glassMat = new THREE.MeshStandardMaterial({ color: 0x1a2430, metalness: 0.6, roughness: 0.1 });
 const trimMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.7 });
 const burntMat = new THREE.MeshStandardMaterial({ color: 0x1b1715, roughness: 1 });
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+const spokeGeo = (() => {
+  const g = new THREE.BoxGeometry(0.31, 0.06, 0.46);
+  return g;
+})();
+const plateMat = new THREE.MeshStandardMaterial({ color: 0xf2efe0, roughness: 0.6 });
+let _chrome, _glass, _checker;
+const chromeMat = () => (_chrome ||= new THREE.MeshStandardMaterial({ color: 0xd8d8d8, metalness: 1, roughness: 0.2, envMap: Vehicle.envMap }));
+const glassMat = () => (_glass ||= new THREE.MeshStandardMaterial({ color: 0x0e1620, metalness: 0.9, roughness: 0.06, envMap: Vehicle.envMap, envMapIntensity: 1.2 }));
+const checkerMat = () => {
+  if (_checker) return _checker;
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 8;
+  const g = c.getContext('2d');
+  for (let i = 0; i < 16; i++) {
+    g.fillStyle = i % 2 ? '#111' : '#f2c21b';
+    g.fillRect(i * 4, 0, 4, 4);
+    g.fillStyle = i % 2 ? '#f2c21b' : '#111';
+    g.fillRect(i * 4, 4, 4, 4);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.magFilter = THREE.NearestFilter;
+  return (_checker = new THREE.MeshStandardMaterial({ map: t, roughness: 0.4 }));
+};
+export function setVehicleEnvIntensity(k) {
+  Vehicle.envI = k;
+  if (_chrome) _chrome.envMapIntensity = k;
+  if (_glass) _glass.envMapIntensity = k * 1.2;
+}
+const beamGeo = new THREE.PlaneGeometry(4.5, 10).rotateX(-Math.PI / 2);
+export const beamMat = (() => {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 128;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(32, 120, 4, 32, 90, 90);
+  grd.addColorStop(0, 'rgba(255,255,255,0.9)');
+  grd.addColorStop(0.6, 'rgba(255,255,255,0.25)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 64, 128);
+  return new THREE.MeshBasicMaterial({
+    map: new THREE.CanvasTexture(c), color: 0xfff0c8, transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -4,
+  });
+})();
+
+// Side-profile extrusions (body with wheel arches, glasshouse, roof), cached per type.
+const PROFILE = {
+  sedan: { cf: 0.14, cr: -0.27, ws: 0.15, rw: 0.11 },
+  taxi: { cf: 0.14, cr: -0.27, ws: 0.15, rw: 0.11 },
+  police: { cf: 0.14, cr: -0.27, ws: 0.15, rw: 0.11 },
+  sports: { cf: 0.08, cr: -0.25, ws: 0.2, rw: 0.14 },
+  muscle: { cf: 0.04, cr: -0.24, ws: 0.14, rw: 0.13 },
+  van: { cf: 0.36, cr: -0.49, ws: 0.06, rw: 0.0 },
+};
+const geoCache = {};
+function extrude(shape, width, bevel = 0.06) {
+  const g = new THREE.ExtrudeGeometry(shape, { depth: width - bevel * 2, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 10 });
+  g.rotateY(-Math.PI / 2);
+  g.translate(width / 2 - bevel, 0, 0);
+  g.computeVertexNormals();
+  return g;
+}
+function shapeGeos(type) {
+  if (geoCache[type]) return geoCache[type];
+  const s = TYPES[type];
+  const P = PROFILE[type];
+  const L = s.len, W = s.wid;
+  const y0 = 0.32, top = 0.38 + s.body;
+  const wf = L / 2 - 0.85, wr = -L / 2 + 0.85;
+  const cabFront = L * P.cf, cabRear = L * P.cr;
+  const sh = new THREE.Shape();
+  sh.moveTo(-L / 2, y0);
+  sh.lineTo(wr - 0.52, y0);
+  sh.absarc(wr, 0.36, 0.5, Math.PI, 0, true);
+  sh.lineTo(wf - 0.52, y0);
+  sh.absarc(wf, 0.36, 0.5, Math.PI, 0, true);
+  sh.lineTo(L / 2, y0);
+  sh.lineTo(L / 2, top - 0.18);
+  sh.quadraticCurveTo(L / 2, top - 0.04, L / 2 - 0.3, top - 0.02); // rounded nose
+  sh.lineTo(cabFront, top + 0.02); // hood
+  sh.lineTo(cabRear, top + 0.02);
+  sh.lineTo(-L / 2 + 0.25, top - 0.02); // trunk deck
+  sh.quadraticCurveTo(-L / 2, top - 0.04, -L / 2, top - 0.16);
+  sh.closePath();
+  const body = extrude(sh, W, 0.07);
+  // glasshouse (slightly narrower), sloped windshield + rear window
+  const ch = s.cabinH;
+  const g = new THREE.Shape();
+  g.moveTo(cabRear, top);
+  g.lineTo(cabFront, top);
+  g.lineTo(cabFront - L * P.ws, top + ch);
+  g.lineTo(cabRear + L * P.rw, top + ch);
+  g.closePath();
+  const cabW = W * 0.86;
+  const glass = extrude(g, cabW, 0.04);
+  // roof plate in body colour, inset from the glass edges
+  const r = new THREE.Shape();
+  const rf = cabFront - L * P.ws - 0.03, rr = cabRear + L * P.rw + 0.03;
+  r.moveTo(rr, top + ch);
+  r.lineTo(rf, top + ch);
+  r.lineTo(rf - 0.04, top + ch + 0.05);
+  r.lineTo(rr + 0.04, top + ch + 0.05);
+  r.closePath();
+  const roof = extrude(r, cabW + 0.06, 0.02);
+  const res = { body, glass, roof, wf, wr, cabW, cabFront, cabCenter: (cabFront + cabRear) / 2, bpil: (cabFront - L * P.ws * 0.5 + cabRear + L * P.rw * 0.5) / 2 };
+  return (geoCache[type] = res);
+}
 
 let nextId = 1;
 
@@ -57,7 +165,7 @@ export class Vehicle {
   buildModel() {
     const s = this.spec;
     const root = new THREE.Group();
-    this.bodyMat = new THREE.MeshStandardMaterial({ color: this.color, metalness: 0.5, roughness: 0.35 });
+    this.bodyMat = new THREE.MeshStandardMaterial({ color: this.color, metalness: 0.55, roughness: 0.28, envMap: Vehicle.envMap, envMapIntensity: 0.9 });
     const add = (geo, m, x, y, z, parent = root, shadow = true) => {
       const mesh = new THREE.Mesh(geo, m);
       mesh.position.set(x, y, z);
@@ -66,52 +174,67 @@ export class Vehicle {
       return mesh;
     };
     const L = s.len, W = s.wid;
+    const G = shapeGeos(this.typeKey);
     const by = 0.38 + s.body / 2;
-    add(box(W, s.body, L), this.bodyMat, 0, by, 0);
-    // cabin
-    const cl = L * s.cabinLen;
-    const cz = this.typeKey === 'van' ? -L * 0.08 : -L * 0.06;
-    const cy = 0.38 + s.body + s.cabinH / 2;
-    add(box(W * 0.86, s.cabinH, cl), glassMat, 0, cy, cz);
-    add(box(W * 0.88, 0.06, cl * 0.92), this.bodyMat, 0, cy + s.cabinH / 2, cz);
-    // pillars
-    add(box(W * 0.9, s.cabinH, 0.1), this.bodyMat, 0, cy, cz - cl / 2 + 0.05);
-    // bumpers
-    add(box(W * 0.98, 0.22, 0.18), trimMat, 0, 0.45, L / 2 + 0.03);
-    add(box(W * 0.98, 0.22, 0.18), trimMat, 0, 0.45, -L / 2 - 0.03);
+    const top = 0.38 + s.body;
+    add(G.body, this.bodyMat, 0, 0, 0);
+    add(G.glass, glassMat(), 0, 0, 0);
+    add(G.roof, this.bodyMat, 0, 0, 0);
+    // dark wheel wells so you can't see through the arches
+    for (const z of [G.wf, G.wr]) add(box(W - 0.5, 0.55, 1.05), trimMat, 0, 0.62, z, root, false);
+    // B-pillars
+    for (const sx of [-1, 1]) add(box(0.06, s.cabinH * 0.9, 0.14), this.bodyMat, sx * (G.cabW / 2 + 0.01), top + s.cabinH / 2, G.bpil, root, false);
+    // bumpers, grille, plates
+    add(box(W * 0.96, 0.24, 0.16), trimMat, 0, 0.47, L / 2 + 0.02);
+    add(box(W * 0.96, 0.24, 0.16), trimMat, 0, 0.47, -L / 2 - 0.02);
+    add(box(W * 0.42, 0.16, 0.05), chromeMat(), 0, by + 0.02, L / 2 + 0.005, root, false);
+    add(box(0.52, 0.13, 0.03), plateMat, 0, 0.47, L / 2 + 0.11, root, false);
+    add(box(0.52, 0.13, 0.03), plateMat, 0, 0.62, -L / 2 - 0.01, root, false);
+    // mirrors
+    for (const sx of [-1, 1]) add(box(0.22, 0.12, 0.1), this.bodyMat, sx * (W / 2 + 0.08), top + 0.12, G.cabFront - 0.15, root, false);
     // lights
     this.headMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, emissive: 0xfff4d0, emissiveIntensity: 0.3 });
     this.tailMat = new THREE.MeshStandardMaterial({ color: 0x550000, emissive: 0xff1010, emissiveIntensity: 0.4 });
     for (const sx of [-1, 1]) {
-      add(box(0.42, 0.16, 0.06), this.headMat, sx * (W / 2 - 0.3), by + 0.05, L / 2 + 0.01, root, false);
-      add(box(0.36, 0.14, 0.06), this.tailMat, sx * (W / 2 - 0.25), by + 0.08, -L / 2 - 0.01, root, false);
+      add(box(0.42, 0.14, 0.06), this.headMat, sx * (W / 2 - 0.32), by + 0.04, L / 2 + 0.01, root, false);
+      add(box(0.38, 0.13, 0.06), this.tailMat, sx * (W / 2 - 0.28), by + 0.07, -L / 2 - 0.01, root, false);
     }
+    const cz = G.cabCenter;
+    const cy = top + s.cabinH / 2;
     if (this.typeKey === 'taxi') {
-      const sign = add(box(0.7, 0.22, 0.3), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffe060, emissiveIntensity: 0.6 }), 0, cy + s.cabinH / 2 + 0.14, cz);
-      sign.castShadow = false;
-      add(box(W * 1.002, 0.12, L * 0.5), trimMat, 0, by, 0, root, false);
+      add(box(0.7, 0.22, 0.3), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffe060, emissiveIntensity: 0.6 }), 0, top + s.cabinH + 0.14, cz, root, false);
+      add(box(W * 1.004, 0.1, L * 0.45), checkerMat(), 0, by, -0.1, root, false);
     }
     if (this.typeKey === 'sports') {
-      add(box(W * 0.9, 0.06, 0.4), this.bodyMat, 0, by + s.body / 2 + 0.25, -L / 2 + 0.25);
-      add(box(0.08, 0.25, 0.08), trimMat, -0.6, by + s.body / 2 + 0.1, -L / 2 + 0.25);
-      add(box(0.08, 0.25, 0.08), trimMat, 0.6, by + s.body / 2 + 0.1, -L / 2 + 0.25);
+      add(box(W * 0.9, 0.06, 0.4), this.bodyMat, 0, top + 0.28, -L / 2 + 0.25);
+      add(box(0.08, 0.28, 0.08), trimMat, -0.6, top + 0.12, -L / 2 + 0.25);
+      add(box(0.08, 0.28, 0.08), trimMat, 0.6, top + 0.12, -L / 2 + 0.25);
     }
     if (this.typeKey === 'muscle') {
-      add(box(0.5, 0.12, 1.0), trimMat, 0, by + s.body / 2 + 0.06, L * 0.3);
-      add(box(0.25, s.body * 1.01, L * 1.001), new THREE.MeshStandardMaterial({ color: 0xeeeeee }), 0, by, 0, root, false);
+      add(box(0.55, 0.14, 1.0), trimMat, 0, top + 0.07, L * 0.28);
+      add(box(0.28, 0.02, L * 0.98), new THREE.MeshStandardMaterial({ color: 0xeeeeee }), -0.2, top + 0.065, 0, root, false);
+      add(box(0.28, 0.02, L * 0.98), new THREE.MeshStandardMaterial({ color: 0xeeeeee }), 0.2, top + 0.065, 0, root, false);
+    }
+    if (this.typeKey === 'van') {
+      // sliding-door seam + roof rack
+      for (const sx of [-1, 1]) add(box(0.02, s.body + s.cabinH * 0.9, 0.03), trimMat, sx * (W / 2 + 0.005), 0.38 + (s.body + s.cabinH) / 2, 0.2, root, false);
+      add(box(W * 0.8, 0.06, L * 0.45), trimMat, 0, top + s.cabinH + 0.1, -0.4, root, false);
     }
     if (this.isPolice) {
-      const doorMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, metalness: 0.4, roughness: 0.4 });
-      add(box(W * 1.004, s.body * 0.7, L * 0.42), doorMat, 0, by + 0.04, -0.1, root, false);
+      const doorMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, metalness: 0.4, roughness: 0.35, envMap: Vehicle.envMap });
+      add(box(W * 1.006, s.body * 0.6, L * 0.4), doorMat, 0, by + 0.02, -0.1, root, false);
+      add(box(W * 0.6, 0.06, 0.5), trimMat, 0, top + s.cabinH + 0.04, cz, root, false);
       this.lightRed = new THREE.MeshStandardMaterial({ color: 0x440000, emissive: 0xff0000, emissiveIntensity: 0 });
       this.lightBlue = new THREE.MeshStandardMaterial({ color: 0x000044, emissive: 0x2050ff, emissiveIntensity: 0 });
-      add(box(0.6, 0.14, 0.26), this.lightRed, -0.33, cy + s.cabinH / 2 + 0.1, cz, root, false);
-      add(box(0.6, 0.14, 0.26), this.lightBlue, 0.33, cy + s.cabinH / 2 + 0.1, cz, root, false);
+      add(box(0.6, 0.14, 0.26), this.lightRed, -0.33, top + s.cabinH + 0.12, cz, root, false);
+      add(box(0.6, 0.14, 0.26), this.lightBlue, 0.33, top + s.cabinH + 0.12, cz, root, false);
+      // push bar
+      add(box(W * 0.7, 0.35, 0.08), trimMat, 0, 0.55, L / 2 + 0.16, root, false);
     }
     // wheels
     this.wheels = [];
-    const wx = W / 2 - 0.12, wz = L / 2 - 0.85;
-    for (const [x, z, front] of [[-wx, wz, true], [wx, wz, true], [-wx, -wz, false], [wx, -wz, false]]) {
+    const wx = W / 2 - 0.14;
+    for (const [x, z, front] of [[-wx, G.wf, true], [wx, G.wf, true], [-wx, G.wr, false], [wx, G.wr, false]]) {
       const pivot = new THREE.Group();
       pivot.position.set(x, 0.36, z);
       root.add(pivot);
@@ -119,9 +242,16 @@ export class Vehicle {
       pivot.add(spin);
       const t = new THREE.Mesh(wheelGeo, tireMat);
       t.castShadow = true;
-      spin.add(t, new THREE.Mesh(hubGeo, hubMat));
-      this.wheels.push({ pivot, spin, front });
+      const hub = new THREE.Mesh(hubGeo, chromeMat());
+      const spokes = new THREE.Mesh(spokeGeo, chromeMat());
+      spin.add(t, hub, spokes);
+      this.wheels.push({ pivot, spin, front, x, z });
     }
+    // headlight beam on the road (night only)
+    this.beam = new THREE.Mesh(beamGeo, beamMat);
+    this.beam.position.set(0, 0.06, L / 2 + 5.5);
+    this.beam.visible = false;
+    root.add(this.beam);
     this.cabinZ = cz;
     this.root = root;
     this.radius = W / 2;
@@ -262,8 +392,26 @@ export class Vehicle {
     this.syncMesh();
     this.root.rotation.y = this.heading;
 
+    // tyre marks + smoke when sliding, locking up or doing a burnout
+    const slip = Math.abs(vl);
+    const skidding = this.alive && ((slip > 3.2 && Math.abs(vf) > 4) || (inp.handbrake && Math.abs(vf) > 6) ||
+      (inp.throttle < 0 && vf > 12) || (inp.throttle > 0 && vf > 0 && vf < 7 && s.accel > 15 && this.driver === 'player'));
+    for (const w of this.wheels) {
+      if (w.front && !(inp.throttle < 0 && vf > 12)) continue;
+      const wx = this.pos.x + rx * -w.x + fx * w.z, wz = this.pos.z + rz * -w.x + fz * w.z;
+      if (skidding) {
+        if (w.last) G.fx.skid(w.last.x, w.last.z, wx, wz, this.pos.y);
+        w.last = { x: wx, z: wz };
+        if (this.driver === 'player' && Math.random() < dt * 12) G.fx.tireSmoke(wx, 0.3, wz);
+      } else w.last = null;
+    }
+    this.skidding = skidding;
+
+    this.bodyMat.envMapIntensity = (Vehicle.envI ?? 1) * 0.9;
     // lights
     const night = G.night;
+    this.beam.visible = this.alive && !!this.driver && night > 0.3;
+    if (this.beam.visible) beamMat.opacity = 0.55 * night;
     this.headMat.emissiveIntensity = 0.3 + night * 2.2;
     this.tailMat.emissiveIntensity = (inp.throttle < 0 && vf > 0.5) || inp.handbrake ? 2.2 : 0.3 + night * 0.8;
     if (this.isPolice) {
@@ -294,6 +442,8 @@ export class Vehicle {
     this.alive = false;
     this.health = 0;
     this.siren = false;
+    this.beam.visible = false;
+    this.root.remove(this.beam);
     this.root.traverse((o) => {
       if (o.isMesh && o.material !== tireMat) o.material = burntMat;
     });

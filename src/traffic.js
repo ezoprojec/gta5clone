@@ -2,6 +2,7 @@
 import { Vehicle, randomTrafficType, collideVehicles } from './vehicle.js';
 import { N, LANE, ROAD, CELL } from './world.js';
 import { clamp, wrapAngle, headingTo, rand } from './util.js';
+import { lightState } from './details.js';
 
 function neighbors(n) {
   const out = [];
@@ -104,7 +105,14 @@ export class TrafficAI {
     if (!this.wps.length) this.planSegment();
     const wp = this.wps[0];
     const d = Math.hypot(wp.x - v.pos.x, wp.z - v.pos.z);
-    if (d < (wp.stop ? 6 : 4)) {
+    // traffic lights: hold at the stop line on red (or yellow when there's room to stop)
+    let redLight = false;
+    if (wp.stop && this.panicT <= 0) {
+      const axis = this.from.j === this.to.j ? 'x' : 'z';
+      const st = lightState(this.to.i, this.to.j, axis, G.time);
+      if (st === 'red' || (st === 'yellow' && d > 9)) redLight = true;
+    }
+    if (d < (wp.stop ? 6 : 4) && !redLight) {
       this.wps.shift();
       if (wp.stop) this.chooseNext();
       return;
@@ -114,6 +122,7 @@ export class TrafficAI {
     this.panicT -= dt;
     if (Math.abs(diff) > 0.35) desired = Math.min(desired, 7);
     if (wp.stop && d < 14) desired = Math.min(desired, 8);
+    if (redLight) desired = Math.min(desired, Math.max(0, (d - 1.5) * 0.7));
     desired = obstacleSpeed(v, G, desired);
 
     if (this.reverseT > 0) {
@@ -125,7 +134,7 @@ export class TrafficAI {
     }
     if (desired > 3 && Math.abs(v.speed) < 0.8) {
       this.stuckT += dt;
-      if (this.stuckT > 2.5) {
+      if (this.stuckT > 3.5) {
         this.stuckT = 0;
         this.reverseT = 1.3;
       }

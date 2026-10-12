@@ -18,13 +18,21 @@ const G = {
   torso: new THREE.BoxGeometry(0.56, 0.66, 0.3).translate(0, 0.33, 0),
   head: new THREE.BoxGeometry(0.3, 0.32, 0.3),
   hair: new THREE.BoxGeometry(0.32, 0.1, 0.32),
-  arm: new THREE.BoxGeometry(0.15, 0.68, 0.17).translate(0, -0.32, 0),
   hand: new THREE.BoxGeometry(0.13, 0.12, 0.13),
   cap: new THREE.BoxGeometry(0.34, 0.08, 0.42),
   shoe: new THREE.BoxGeometry(0.22, 0.1, 0.32),
   gun: new THREE.BoxGeometry(0.08, 0.12, 0.34),
   belt: new THREE.BoxGeometry(0.58, 0.08, 0.32),
   eye: new THREE.BoxGeometry(0.05, 0.04, 0.02),
+  neck: new THREE.BoxGeometry(0.14, 0.1, 0.14),
+  upper: new THREE.BoxGeometry(0.16, 0.36, 0.18).translate(0, -0.16, 0),
+  lower: new THREE.BoxGeometry(0.14, 0.34, 0.16).translate(0, -0.5, 0),
+  hairLong: new THREE.BoxGeometry(0.33, 0.36, 0.1),
+  bun: new THREE.BoxGeometry(0.14, 0.12, 0.12),
+  panel: new THREE.BoxGeometry(0.2, 0.62, 0.04),
+  collar: new THREE.BoxGeometry(0.4, 0.06, 0.32),
+  mouth: new THREE.BoxGeometry(0.1, 0.025, 0.02),
+  nose: new THREE.BoxGeometry(0.05, 0.07, 0.04),
 };
 
 export const SKIN = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac, 0x6b4226];
@@ -32,8 +40,17 @@ export const SHIRTS = [0xd94848, 0x3b6fd9, 0x40a860, 0xe0c040, 0xffffff, 0x22222
 export const PANTS = [0x2a3a5a, 0x222222, 0x6b5a40, 0x3a3a3a, 0x8a7a60, 0x4a5a70];
 export const HAIR = [0x1a1a1a, 0x4a3020, 0x8a6030, 0xd0b060, 0x606060];
 
+export const SHOES = [0x1c1c1c, 0xeeeeee, 0x6b4a2f, 0x2a3a6a, 0xb03030];
 export function randomLook() {
-  return { skin: pick(SKIN), shirt: pick(SHIRTS), pants: pick(PANTS), hair: pick(HAIR), cap: Math.random() < 0.2 ? pick(SHIRTS) : null };
+  const slim = Math.random() < 0.45;
+  return {
+    skin: pick(SKIN), shirt: pick(SHIRTS), pants: pick(PANTS), hair: pick(HAIR), shoes: pick(SHOES),
+    cap: Math.random() < 0.18 ? pick(SHIRTS) : null,
+    slim,
+    hairStyle: slim ? pick(['long', 'long', 'bun', 'short']) : pick(['short', 'short', 'short', 'bald', 'long']),
+    shortSleeve: Math.random() < 0.45,
+    jacket: Math.random() < 0.25 ? pick([0x2a2a2a, 0x5a3a22, 0x24324a, 0x6a6a6a]) : null,
+  };
 }
 
 export function makeCharacter(look) {
@@ -54,12 +71,24 @@ export function makeCharacter(look) {
   const legR = new THREE.Group(); legR.position.set(0.13, 0, 0); body.add(legR);
   mesh(G.leg, look.pants, 0, 0, 0, legL);
   mesh(G.leg, look.pants, 0, 0, 0, legR);
-  mesh(G.shoe, 0x1c1c1c, 0, -0.87, 0.04, legL);
-  mesh(G.shoe, 0x1c1c1c, 0, -0.87, 0.04, legR);
+  mesh(G.shoe, look.shoes ?? 0x1c1c1c, 0, -0.87, 0.04, legL);
+  mesh(G.shoe, look.shoes ?? 0x1c1c1c, 0, -0.87, 0.04, legR);
   const torso = mesh(G.torso, look.shirt, 0, 0, 0, body);
+  if (look.slim) torso.scale.set(0.86, 1, 0.92);
   if (look.belt) mesh(G.belt, look.belt, 0, 0.03, 0, body);
+  if (look.jacket) {
+    // open jacket: side panels + collar over the shirt
+    mesh(G.panel, look.jacket, -0.19, 0.33, 0.14, body);
+    mesh(G.panel, look.jacket, 0.19, 0.33, 0.14, body);
+    mesh(G.collar, look.jacket, 0, 0.64, 0, body);
+  }
+  mesh(G.neck, look.skin, 0, 0.7, 0, body);
   const head = mesh(G.head, look.skin, 0, 0.84, 0, body);
-  mesh(G.hair, look.hair, 0, 0.16, 0, head);
+  if (look.hairStyle !== 'bald') mesh(G.hair, look.hair, 0, 0.16, 0, head);
+  if (look.hairStyle === 'long') mesh(G.hairLong, look.hair, 0, -0.02, -0.12, head);
+  if (look.hairStyle === 'bun') mesh(G.bun, look.hair, 0, 0.15, -0.17, head);
+  mesh(G.nose, look.skin, 0, -0.02, 0.165, head).castShadow = false;
+  mesh(G.mouth, 0x6a3030, 0, -0.09, 0.155, head).castShadow = false;
   if (look.cap) {
     const c = mesh(G.cap, look.cap, 0, 0.19, 0.04, head);
     c.castShadow = false;
@@ -69,10 +98,15 @@ export function makeCharacter(look) {
   mesh(eyeGeo, 0x111111, -0.07, 0.03, 0.155, head).castShadow = false;
   mesh(eyeGeo, 0x111111, 0.07, 0.03, 0.155, head).castShadow = false;
 
-  const armL = new THREE.Group(); armL.position.set(-0.36, 0.6, 0); body.add(armL);
-  const armR = new THREE.Group(); armR.position.set(0.36, 0.6, 0); body.add(armR);
-  mesh(G.arm, look.sleeve ?? look.shirt, 0, 0, 0, armL);
-  mesh(G.arm, look.sleeve ?? look.shirt, 0, 0, 0, armR);
+  const sh = look.slim ? 0.32 : 0.36;
+  const armL = new THREE.Group(); armL.position.set(-sh, 0.6, 0); body.add(armL);
+  const armR = new THREE.Group(); armR.position.set(sh, 0.6, 0); body.add(armR);
+  const sleeve = look.jacket ?? look.sleeve ?? look.shirt;
+  const fore = look.shortSleeve && !look.jacket ? look.skin : sleeve;
+  for (const arm of [armL, armR]) {
+    mesh(G.upper, sleeve, 0, 0, 0, arm);
+    mesh(G.lower, fore, 0, 0, 0, arm);
+  }
   mesh(G.hand, look.skin, 0, -0.7, 0, armL);
   mesh(G.hand, look.skin, 0, -0.7, 0, armR);
   const gun = mesh(G.gun, 0x202020, 0, -0.72, 0.12, armR);

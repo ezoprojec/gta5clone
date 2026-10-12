@@ -4,7 +4,13 @@ import { World } from './world.js';
 import { Player } from './player.js';
 import { PedManager } from './peds.js';
 import { VehicleManager, TrafficAI } from './traffic.js';
-import { Vehicle } from './vehicle.js';
+import { Vehicle, setVehicleEnvIntensity } from './vehicle.js';
+import { Details } from './details.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Wanted, PoliceManager, PoliceAI } from './police.js';
 import { Pickups } from './pickups.js';
 import { Missions } from './missions.js';
@@ -18,7 +24,6 @@ const params = new URLSearchParams(location.search);
 
 // ---------------- renderer / scene ----------------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -57,6 +62,73 @@ const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenua
 const starPts = new THREE.Points(starGeo, starMat);
 scene.add(starPts);
 
+// gradient sky dome with a sun glow
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
+  uniforms: {
+    top: { value: new THREE.Color(0x3a7bd5) }, horizon: { value: new THREE.Color(0xbfd8f0) }, ground: { value: new THREE.Color(0x6a7a88) },
+    sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunCol: { value: new THREE.Color(0xfff0c0) }, glow: { value: 1 },
+  },
+  vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position.z = gl_Position.w; }`,
+  fragmentShader: `uniform vec3 top, horizon, ground, sunDir, sunCol; uniform float glow; varying vec3 vDir;
+    void main(){
+      float h = vDir.y;
+      vec3 c = h > 0.0 ? mix(horizon, top, pow(min(h * 1.6, 1.0), 0.7)) : mix(horizon, ground, min(-h * 4.0, 1.0));
+      float d = max(dot(normalize(vDir), sunDir), 0.0);
+      c += sunCol * (pow(d, 600.0) * 2.5 + pow(d, 24.0) * 0.35 + pow(d, 4.0) * 0.12) * glow;
+      gl_FragColor = vec4(c, 1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`,
+});
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(1300, 32, 16), skyMat);
+skyDome.frustumCulled = false;
+skyDome.renderOrder = -1;
+scene.add(skyDome);
+
+// reflections for car paint, glass and glass towers
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+Vehicle.envMap = envTex;
+
+// post-processing: bloom makes neon, lamps and headlights glow
+// multisampled HDR target: keeps anti-aliasing and full depth precision under post-processing
+const rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 });
+rt.depthTexture = new THREE.DepthTexture(innerWidth, innerHeight, THREE.FloatType);
+const composer = new EffectComposer(renderer, rt);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.4, 0.5, 0.85);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// graphics quality presets (O to cycle)
+const QUALITY = [
+  { name: 'Low', pr: 1, shadow: 1024, bloom: false },
+  { name: 'Medium', pr: 1.25, shadow: 2048, bloom: true },
+  { name: 'High', pr: 2, shadow: 4096, bloom: true },
+];
+let quality = 1;
+try {
+  const q = parseInt(localStorage.getItem('neonbay-quality'), 10);
+  if (q >= 0 && q < QUALITY.length) quality = q;
+} catch { /* storage unavailable */ }
+if (params.has('low')) quality = 0;
+function applyQuality() {
+  const Q = QUALITY[quality];
+  renderer.setPixelRatio(Math.min(devicePixelRatio, Q.pr));
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setPixelRatio(Math.min(devicePixelRatio, Q.pr));
+  composer.setSize(innerWidth, innerHeight);
+  bloom.resolution.set(innerWidth / 2, innerHeight / 2);
+  sun.shadow.mapSize.set(Q.shadow, Q.shadow);
+  if (sun.shadow.map) {
+    sun.shadow.map.dispose();
+    sun.shadow.map = null;
+  }
+  try { localStorage.setItem('neonbay-quality', String(quality)); } catch { /* ignore */ }
+}
+applyQuality();
+
 // sun / moon disc
 const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(25, 16, 8), new THREE.MeshBasicMaterial({ color: 0xfff2c0, fog: false }));
 scene.add(sunDisc);
@@ -81,6 +153,12 @@ G.input = new Input(renderer.domElement);
 G.audio = new Audio();
 G.fx = new FX(scene);
 G.world = new World(scene);
+for (const m of G.world.reflective) {
+  m.envMap = envTex;
+  m.needsUpdate = true;
+}
+G.details = new Details(G.world, scene);
+G.weather = { rain: params.has('rain') ? 1 : 0, clouds: params.has('rain') ? 1 : 0.2, target: params.has('rain') ? 'rain' : 'clear', timer: 240, flash: 0 };
 G.player = new Player(G);
 G.peds = new PedManager(G);
 G.traffic = new VehicleManager(G);
@@ -265,6 +343,31 @@ const skyDay = new THREE.Color(0x9cc8f0), skyDusk = new THREE.Color(0xf09060), s
 const tmpC = new THREE.Color();
 const moonCol = new THREE.Color(0x9fb4ff), sunCol = new THREE.Color(0xfff0d8);
 const hemiNight = new THREE.Color(0x7080b8), hemiDay = new THREE.Color(0xcfe6ff);
+const skyTopDay = new THREE.Color(0x2f6fcf), skyTopNight = new THREE.Color(0x02040c);
+const grey = new THREE.Color();
+
+// ---------------- weather ----------------
+function updateWeather(dt) {
+  const W = G.weather;
+  W.timer -= dt;
+  if (W.timer <= 0 && !params.has('rain')) {
+    const r = Math.random();
+    W.target = r < 0.6 ? 'clear' : r < 0.82 ? 'cloudy' : 'rain';
+    W.timer = rand(150, 360);
+    if (W.target === 'rain') G.hud.notify('Storm rolling in...', 3);
+  }
+  const wantClouds = W.target === 'clear' ? 0.15 : W.target === 'cloudy' ? 0.65 : 1;
+  const wantRain = W.target === 'rain' ? 1 : 0;
+  W.clouds += clamp(wantClouds - W.clouds, -dt / 25, dt / 25);
+  W.rain += clamp(wantRain - W.rain, -dt / 20, dt / 20);
+  if (W.rain > 0.95 && Math.random() < dt * 0.04) {
+    W.flash = 1;
+    setTimeout(() => G.audio.thunder?.(), 600 + Math.random() * 1500);
+  }
+  W.flash = Math.max(0, W.flash - dt * 4);
+  G.fx.setRain(W.rain, camera.position, dt);
+  G.world.setWet(W.rain);
+}
 function updateSky(dt) {
   G.hour = (G.hour + dt / 30) % 24; // 1 in-game hour = 30 s
   const h = G.hour;
@@ -273,27 +376,46 @@ function updateSky(dt) {
   const dayF = smoothstep(-0.08, 0.25, elev);
   G.night = 1 - dayF;
   const duskF = clamp(1 - Math.abs(elev) / 0.3, 0, 1);
+  const W = G.weather;
+  const overcast = W.clouds;
   tmpC.copy(skyNight).lerp(skyDay, dayF).lerp(skyDusk, duskF * 0.55);
+  tmpC.lerp(grey.setScalar(0.55 * dayF + 0.06), overcast * 0.7);
+  skyMat.uniforms.horizon.value.copy(tmpC);
+  skyMat.uniforms.top.value.copy(skyTopNight).lerp(skyTopDay, dayF).lerp(grey.setScalar(0.45 * dayF + 0.04), overcast * 0.75);
+  skyMat.uniforms.ground.value.copy(tmpC).multiplyScalar(0.7);
+  skyMat.uniforms.glow.value = (1 - overcast * 0.85) * clamp(elev * 4 + 0.3, 0, 1);
+  skyMat.uniforms.sunCol.value.setRGB(1, 0.85 + dayF * 0.1, 0.6 + dayF * 0.3);
+  skyDome.position.copy(camera.position);
   scene.background.copy(tmpC);
   scene.fog.color.copy(tmpC);
-  scene.fog.near = lerp(60, 140, dayF);
-  scene.fog.far = lerp(380, 600, dayF);
+  scene.fog.near = lerp(60, 140, dayF) * (1 - W.rain * 0.5);
+  scene.fog.far = lerp(380, 650, dayF) * (1 - W.rain * 0.45);
   const pp = G.player.inCar ? G.player.inCar.pos : G.player.pos;
   const sx = Math.cos(sunAng), sy = Math.max(Math.sin(sunAng), 0.15);
   sun.position.set(pp.x + sx * 150, sy * 200, pp.z + 60);
   sun.target.position.set(pp.x, 0, pp.z);
   // moonlight at night keeps the streets readable
-  sun.intensity = lerp(0.7, 2.4, dayF);
+  sun.intensity = lerp(0.7, 2.4, dayF) * (1 - overcast * 0.6);
   sun.color.copy(moonCol).lerp(sunCol, dayF);
-  hemi.intensity = lerp(0.75, 0.9, dayF);
+  hemi.intensity = lerp(0.75, 0.9, dayF) + W.flash * 3;
   hemi.color.copy(hemiNight).lerp(hemiDay, dayF);
   renderer.toneMappingExposure = lerp(1.15, 1.0, dayF);
-  starMat.opacity = G.night;
+  starMat.opacity = G.night * (1 - overcast);
+  skyMat.uniforms.sunDir.value.set(sx, Math.sin(sunAng), 0.35).normalize();
+  // reflections fade with daylight so cars don't glow at night
+  const envI = lerp(0.12, 1, dayF) * (1 - overcast * 0.4);
+  G.envI = envI;
+  setVehicleEnvIntensity(envI);
+  for (const m of G.world.reflective) m.envMapIntensity = envI;
+  bloom.strength = lerp(0.5, 0.28, dayF);
+  bloom.threshold = lerp(0.82, 0.9, dayF);
+  bloom.radius = 0.35;
   starPts.position.copy(camera.position);
   const night = Math.sin(sunAng) < 0;
   sunDisc.position.set(camera.position.x + (night ? -sx : sx) * 900, Math.abs(Math.sin(sunAng)) * 700 + 40, camera.position.z + 300);
   sunDisc.material.color.setHex(night ? 0xdde4ff : 0xfff2c0);
   sunDisc.scale.setScalar(night ? 0.7 : 1);
+  sunDisc.visible = overcast < 0.6;
   G.world.setNight(G.night);
 }
 
@@ -364,7 +486,9 @@ function updateCamera(dt) {
 // ---------------- main loop ----------------
 function simulate(dt) {
   G.time += dt;
+  updateWeather(dt);
   updateSky(dt);
+  G.details.update(dt, G.time, G.night, G.weather.clouds, camera.position);
   G.player.update(dt);
   G.traffic.update(dt);
   G.peds.update(dt);
@@ -416,11 +540,17 @@ function frame() {
 
   if (inp.hit('KeyM')) G.hud.toggleMap();
   if (inp.hit('KeyP') && G.started) setPaused(!G.paused);
+  if (inp.hit('KeyO')) {
+    quality = (quality + 1) % QUALITY.length;
+    applyQuality();
+    G.hud.notify(`Graphics: ${QUALITY[quality].name}`, 2);
+  }
 
   if (!G.paused) simulate(dt);
   updateCamera(G.paused ? 0 : dt);
   G.hud.update(G.paused ? 0 : dt);
-  renderer.render(scene, camera);
+  if (QUALITY[quality].bloom) composer.render();
+  else renderer.render(scene, camera);
   inp.endFrame();
   G.fps = 1 / Math.max(dt, 1e-3);
 }
@@ -457,6 +587,8 @@ addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  bloom.resolution.set(innerWidth / 2, innerHeight / 2);
 });
 setInterval(() => G.started && G.save(), 15000);
 

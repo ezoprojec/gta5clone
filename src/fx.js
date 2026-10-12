@@ -34,6 +34,30 @@ export class FX {
     }
     this.tracers = [];
     this.tracerMat = new THREE.LineBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.9 });
+    // skid marks: one ring-buffered mesh of thin quads laid on the road
+    this.SKID_MAX = 1500;
+    const sg = new THREE.BufferGeometry();
+    this.skidPos = new Float32Array(this.SKID_MAX * 6 * 3);
+    sg.setAttribute('position', new THREE.BufferAttribute(this.skidPos, 3));
+    this.skidMesh = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({
+      color: 0x111111, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2,
+    }));
+    this.skidMesh.frustumCulled = false;
+    scene.add(this.skidMesh);
+    this.skidIdx = 0;
+    // rain: a box of falling streaks that follows the camera
+    const RN = 2600;
+    const rp = new Float32Array(RN * 6);
+    for (let i = 0; i < RN; i++) {
+      const x = rand(-40, 40), y = rand(0, 40), z = rand(-40, 40);
+      rp.set([x, y, z, x + 0.05, y - 0.7, z], i * 6);
+    }
+    const rg = new THREE.BufferGeometry();
+    rg.setAttribute('position', new THREE.BufferAttribute(rp, 3));
+    this.rain = new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0xaabbcc, transparent: true, opacity: 0 }));
+    this.rain.frustumCulled = false;
+    this.rain.visible = false;
+    scene.add(this.rain);
     this.flash = new THREE.PointLight(0xffaa55, 0, 12, 2);
     scene.add(this.flash);
     this.flashT = 0;
@@ -113,6 +137,44 @@ export class FX {
     this.flash.intensity = 800;
     this.flash.distance = 60;
     this.flashT = 0.25;
+  }
+  skid(ax, az, bx, bz, y = 0) {
+    const dx = bx - ax, dz = bz - az;
+    const len = Math.hypot(dx, dz);
+    if (len < 0.05 || len > 3) return;
+    const w = 0.13, nx = (-dz / len) * w, nz = (dx / len) * w;
+    const yy = y + 0.035;
+    const v = [ax - nx, yy, az - nz, bx - nx, yy, bz - nz, bx + nx, yy, bz + nz, ax - nx, yy, az - nz, bx + nx, yy, bz + nz, ax + nx, yy, az + nz];
+    this.skidPos.set(v, this.skidIdx * 18);
+    this.skidIdx = (this.skidIdx + 1) % this.SKID_MAX;
+    const attr = this.skidMesh.geometry.attributes.position;
+    attr.needsUpdate = true;
+  }
+  tireSmoke(x, y, z) {
+    this.spawn(x + rand(-0.2, 0.2), y, z + rand(-0.2, 0.2), {
+      vx: rand(-0.6, 0.6), vy: rand(0.4, 1.2), vz: rand(-0.6, 0.6), life: rand(0.8, 1.4),
+      size0: 0.6, size1: 2.4, color: 0xdddddd, alpha: 0.35, drag: 1.2,
+    });
+  }
+  // intensity 0..1, follows the camera position
+  setRain(k, cam, dt) {
+    this.rain.visible = k > 0.02;
+    if (!this.rain.visible) return;
+    this.rain.material.opacity = 0.45 * k;
+    const a = this.rain.geometry.attributes.position.array;
+    const fall = 32 * dt;
+    for (let i = 0; i < a.length; i += 6) {
+      a[i + 1] -= fall;
+      a[i + 4] -= fall;
+      if (a[i + 4] < 0) {
+        a[i + 1] += 40;
+        a[i + 4] += 40;
+      }
+    }
+    this.rain.geometry.attributes.position.needsUpdate = true;
+    this.rain.position.set(Math.floor(cam.x / 20) * 20, Math.floor(cam.y / 40) * 40 - 8, Math.floor(cam.z / 20) * 20);
+    // splashes near the camera
+    if (Math.random() < k * 0.8) this.spawn(cam.x + rand(-10, 10), 0.1, cam.z + rand(-10, 10), { life: 0.2, size0: 0.15, size1: 0.35, color: 0xcfe0ff, alpha: 0.5 });
   }
   tracer(ax, ay, az, bx, by, bz) {
     const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(ax, ay, az), new THREE.Vector3(bx, by, bz)]);
