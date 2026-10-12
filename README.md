@@ -13,6 +13,14 @@ python3 -m http.server 8000
 
 (Opening `index.html` straight from disk won't work, because browsers block ES modules on `file://`.)
 
+### Publish it online (GitHub Pages)
+
+The repo includes a workflow (`.github/workflows/pages.yml`) that publishes the game every time `main` changes. To turn it on once:
+
+1. Go to **Settings**, then **Pages**, and set **Source** to **GitHub Actions**. No Save button is needed.
+2. Merge anything into `main`, or open the **Actions** tab and run **Deploy to GitHub Pages** by hand.
+3. The game will be live at `https://<your-username>.github.io/<repo-name>/`.
+
 ## Controls
 
 | Key | Action |
@@ -23,8 +31,13 @@ python3 -m http.server 8000
 | Space | Jump / handbrake (drift!) |
 | F | Enter, exit, or carjack a vehicle |
 | LMB / RMB | Shoot / aim (you can shoot from cars too) |
-| Wheel or 1–4 | Switch weapon (fists, pistol, SMG, shotgun) |
+| Wheel or 1–7 | Switch weapon |
 | R | Reload |
+| Tab (hold) | Weapon wheel (time slows while it's open) |
+| X | Slow-motion special ability |
+| Z | Switch character (Rico → Dana → Moe) |
+| Q | Next radio station (in a vehicle) |
+| ` | Cheat console |
 | E | Interact: start missions, buy from the gun shop |
 | H | Horn |
 | G | Toggle siren (in a police car) |
@@ -35,6 +48,26 @@ python3 -m http.server 8000
 ## Features
 
 - **Procedural city.** A 10×10 grid of blocks: a downtown of skyscrapers, commercial streets with neon trim, suburbs, parks with fountains, and a beach on the south edge. Windows light up at night.
+- **Three playable characters.** Rico Vance (getaway driver), Dana Reyes (hacker) and Big Moe (biker). Each has their own location, cash, weapons and ride. Press **Z** to switch, with a swooping sky-cam transition. Switching isn't allowed while you're wanted or on a mission.
+- **Car radio.** Four stations of endlessly generated original music (synthwave, hip-hop, rock and island lounge), plus Radio Off. Press **Q** in a vehicle to change station.
+- **Weapons.** Fists, a baseball bat, pistol, SMG, shotgun, grenades (bounce, then explode) and a rocket launcher, picked with a weapon wheel.
+- **Slow motion.** A special ability (**X**) with a recharging meter under the health bar.
+- **Motorcycles.** The Zephyr 600 shows up in traffic and in parking spots. Bikes lean into turns, and a hard crash throws you over the handlebars.
+- **Quick Coat Paint & Body.** Next to the Eastgate gas station. Drive in while wanted or damaged: for $250 you get a fresh paint job, a full repair, and the cops lose your trail.
+- **Store robberies.** Aim a gun at a GoFast kiosk clerk until they drop the till money. Expect two stars.
+- **Cheat codes.** Press **`** and type one: `PATCHMEUP`, `LOCKNLOAD`, `CLEANSLATE`, `BRINGTHEHEAT`, `SHOWROOM`, `TWOWHEELS`, `STORMFRONT`, `BLUESKIES`, `RECHARGE`.
+- **Districts.** Each district has its own look, and its name pops up when you enter: Downtown, Midtown, Northside, Eastgate, the Ironworks freight yard, Palm Heights villas with pools, brick Old Town, the neon-soaked Sunset Strip, Lantern Market, and the beach. The full map (M) labels them all.
+- **Landmarks.**
+  - **Apex Tower:** a 300 m skyscraper with a blinking spire.
+  - **Bay Arena:** a stadium with floodlights. Walk in through the south gate.
+  - **Lucky Star Hotel:** a hotel with a spinning neon star on its roof.
+  - **Old Town clock tower:** its clock shows the in-game time.
+  - **Lantern Market:** stalls strung with lanterns that glow at night.
+  - **Skyline One:** a construction site with a slewing tower crane.
+  - **The coast:** a lighthouse whose beam sweeps the sky at night, a marina with bobbing boats, and hills to the north with a big hillside sign.
+- **Stunts.** Ramps in the Stunt Park and on the beach launch your car into the air. Big airtime pays a stunt bonus.
+- **Gas stations.** Three GoFast Fuel stations, whose pumps explode when shot and can set off the next pump.
+- **Neon Tokens.** 12 hidden collectibles around the landmarks, worth $250 each, plus $5,000 for finding them all. Your progress is saved.
 - **Day/night cycle.** One in-game hour takes 30 seconds. There's a gradient sky with a sun glow, drifting clouds, stars and a moon. At night, street lamps cast pools of light and car headlights light up the road.
 - **Weather.** Clear, cloudy and rainy spells come and go. Rain brings wet, glossy roads, heavier fog, lightning and thunder.
 - **Graphics.** Bloom makes neon, lamps and lit windows glow. Car paint, glass towers and the sea are reflective. There are several building styles (glass towers, office grids, brick, houses) and shops with awnings at street level.
@@ -69,11 +102,14 @@ vendor/addons/    official Three.js add-ons: bloom post-processing, room environ
 src/main.js       renderer, game loop, camera, day/night, global game events
 src/world.js      city generation, facades, roads, water, collision grid, raycasts, map rendering
 src/details.js    traffic lights, street props, billboards, palms, pier + Ferris wheel, clouds
+src/areas.js      districts, landmarks, stunt ramps, gas stations, lighthouse, marina, hills, Neon Tokens
 src/vehicle.js    car models, driving physics, damage, car-vs-car collisions
 src/traffic.js    lane-following traffic AI + vehicle spawning
 src/police.js     wanted level, pursuit AI, helicopter
 src/peds.js       pedestrians, cops on foot, mission NPCs
-src/player.js     player movement, carjacking, weapons
+src/player.js     player movement, carjacking, weapons, playable characters
+src/projectiles.js grenades and rockets
+src/radio.js      procedural radio stations
 src/missions.js   mission givers + mission logic
 src/pickups.js    pickups + gun shop
 src/hud.js        HUD, minimap, big map

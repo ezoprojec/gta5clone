@@ -8,6 +8,7 @@ export class Input {
     this.lastMouseMove = 0;
     this.canvas = canvas;
     addEventListener('keydown', (e) => {
+      if (e.target && e.target.tagName === 'INPUT') return; // typing in the cheat console
       if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code)) e.preventDefault();
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);

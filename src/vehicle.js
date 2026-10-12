@@ -17,7 +17,9 @@ export const TYPES = {
   police: { name: 'Interceptor', len: 4.7, wid: 1.95, body: 0.55, cabinH: 0.5, cabinLen: 0.48, maxSpeed: 50, accel: 20, mass: 1.5, health: 1200,
     colors: [0x111111] },
 };
-const TRAFFIC_TYPES = ['sedan', 'sedan', 'sedan', 'taxi', 'van', 'muscle', 'sports'];
+TYPES.bike = { name: 'Zephyr 600', len: 2.2, wid: 0.8, body: 0.5, cabinH: 0.4, maxSpeed: 54, accel: 25, mass: 0.45, health: 450, bike: true,
+  colors: [0xd0201a, 0x1a1a1a, 0x1f6fd0, 0xf2c21b, 0x2ac04a, 0xeeeeee] };
+const TRAFFIC_TYPES = ['sedan', 'sedan', 'sedan', 'taxi', 'van', 'muscle', 'sports', 'bike'];
 export const randomTrafficType = () => pick(TRAFFIC_TYPES);
 
 const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.28, 16).rotateZ(Math.PI / 2);
@@ -26,6 +28,8 @@ const tireMat = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9
 const trimMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.7 });
 const burntMat = new THREE.MeshStandardMaterial({ color: 0x1b1715, roughness: 1 });
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+const bikeWheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.14, 16).rotateZ(Math.PI / 2);
+const bikeHubGeo = new THREE.CylinderGeometry(0.16, 0.16, 0.16, 8).rotateZ(Math.PI / 2);
 const spokeGeo = (() => {
   const g = new THREE.BoxGeometry(0.31, 0.06, 0.46);
   return g;
@@ -156,15 +160,22 @@ export class Vehicle {
     this.burnTimer = -1;
     this.driver = null;   // 'player' | AI controller | null
     this.isPolice = typeKey === 'police';
+    this.isBike = !!TYPES[typeKey].bike;
     this.siren = false;
     this.wheelSpin = 0;
+    this.pitch = 0;
+    this.air = false;
+    this.vy = 0;
+    this.airT = 0;
     this.lastHitBy = null;
-    this.buildModel();
+    if (this.isBike) this.buildBikeModel();
+    else this.buildModel();
   }
 
   buildModel() {
     const s = this.spec;
     const root = new THREE.Group();
+    root.rotation.order = 'YXZ'; // heading, then pitch, then roll in the car's own frame
     this.bodyMat = new THREE.MeshStandardMaterial({ color: this.color, metalness: 0.55, roughness: 0.28, envMap: Vehicle.envMap, envMapIntensity: 0.9 });
     const add = (geo, m, x, y, z, parent = root, shadow = true) => {
       const mesh = new THREE.Mesh(geo, m);
@@ -257,6 +268,58 @@ export class Vehicle {
     this.radius = W / 2;
   }
 
+  buildBikeModel() {
+    const s = this.spec;
+    const root = new THREE.Group();
+    root.rotation.order = 'YXZ';
+    this.bodyMat = new THREE.MeshStandardMaterial({ color: this.color, metalness: 0.55, roughness: 0.28, envMap: Vehicle.envMap });
+    const add = (geo, m, x, y, z, rx = 0) => {
+      const mesh = new THREE.Mesh(geo, m);
+      mesh.position.set(x, y, z);
+      mesh.rotation.x = rx;
+      mesh.castShadow = true;
+      root.add(mesh);
+      return mesh;
+    };
+    // frame, tank, seat, fairing, forks, exhaust
+    add(box(0.18, 0.18, 1.3), trimMat, 0, 0.55, -0.05, 0.12);
+    add(box(0.42, 0.3, 0.6), this.bodyMat, 0, 0.82, 0.25);
+    add(box(0.32, 0.12, 0.7), new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.8 }), 0, 0.82, -0.35);
+    add(box(0.46, 0.5, 0.35), this.bodyMat, 0, 0.88, 0.72, -0.4);
+    add(box(0.38, 0.22, 0.04), glassMat(), 0, 1.18, 0.82, -0.6);
+    add(box(0.06, 0.62, 0.06), chromeMat(), -0.1, 0.62, 0.82, 0.35);
+    add(box(0.06, 0.62, 0.06), chromeMat(), 0.1, 0.62, 0.82, 0.35);
+    add(box(0.7, 0.04, 0.04), trimMat, 0, 1.02, 0.62); // handlebars
+    add(new THREE.CylinderGeometry(0.06, 0.08, 0.8, 8).rotateX(Math.PI / 2), chromeMat(), 0.2, 0.42, -0.55);
+    add(box(0.3, 0.12, 0.35), this.bodyMat, 0, 0.72, -0.85); // tail
+    this.headMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, emissive: 0xfff4d0, emissiveIntensity: 0.3 });
+    this.tailMat = new THREE.MeshStandardMaterial({ color: 0x550000, emissive: 0xff1010, emissiveIntensity: 0.4 });
+    add(box(0.18, 0.14, 0.05), this.headMat, 0, 0.95, 0.9);
+    add(box(0.16, 0.08, 0.05), this.tailMat, 0, 0.74, -1.03);
+    this.wheels = [];
+    for (const [z, front] of [[0.78, true], [-0.72, false]]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(0, 0.34, z);
+      root.add(pivot);
+      const spin = new THREE.Group();
+      pivot.add(spin);
+      const t = new THREE.Mesh(bikeWheelGeo, tireMat);
+      t.castShadow = true;
+      spin.add(t, new THREE.Mesh(bikeHubGeo, chromeMat()));
+      this.wheels.push({ pivot, spin, front, x: 0, z });
+    }
+    this.beam = new THREE.Mesh(beamGeo, beamMat);
+    this.beam.position.set(0, 0.06, s.len / 2 + 5.5);
+    this.beam.scale.set(0.6, 1, 0.9);
+    this.beam.visible = false;
+    root.add(this.beam);
+    this.cabinZ = -0.45;
+    this.seatX = 0;
+    this.seatY = 0.32;
+    this.root = root;
+    this.radius = 0.45;
+  }
+
   // Seated driver model is created lazily (parked cars never need one).
   setOccupied(visibleDriver) {
     if (visibleDriver && !this.driverModel) {
@@ -264,7 +327,7 @@ export class Vehicle {
         ? { skin: pick([0xf1c27d, 0xc68642, 0x8d5524, 0xe0ac69]), shirt: 0x1f2f5a, pants: 0x1a1a2a, hair: 0x1a1a1a, cap: 0x1a2440 }
         : randomLook());
       poseSeated(this.driverModel);
-      this.driverModel.root.position.set(0.4, 0.05, this.cabinZ + 0.1);
+      this.driverModel.root.position.set(this.seatX ?? 0.4, this.seatY ?? 0.05, this.cabinZ + 0.1);
       this.driverModel.root.scale.setScalar(0.92);
       this.driverModel.root.traverse((o) => { o.castShadow = false; });
       this.root.add(this.driverModel.root);
@@ -371,14 +434,55 @@ export class Vehicle {
             G.fx.sparks(c.x - hit.nx * c.r, 0.6, c.z - hit.nz * c.r, 6);
             if (this.driver === 'player') G.audio.crash(Math.min(1, impact / 25));
             if (this.driver === 'player') G.camShake = Math.min(1, impact / 30);
+            if (this.isBike && this.driver === 'player' && impact > 11) G.onBikeCrash?.(this);
           }
         }
       }
     }
 
-    // ground height (curbs)
+    // ground following + airtime off ramps
     const gy = G.world.groundHeight(this.pos.x, this.pos.z);
-    this.pos.y += (gy - this.pos.y) * Math.min(1, dt * 12);
+    if (this.air) {
+      this.vy -= 22 * dt;
+      this.pos.y += this.vy * dt;
+      this.airT += dt;
+      this.pitch += (clamp(-this.vy / Math.max(8, Math.abs(vf)), -0.6, 0.6) - this.pitch) * Math.min(1, dt * 3);
+      if (this.pos.y <= gy) {
+        // landing
+        this.pos.y = gy;
+        const hard = -this.vy;
+        this.air = false;
+        this.vy = 0;
+        if (hard > 9) {
+          this.damage((hard - 9) * 25, G);
+          G.fx.sparks(this.pos.x, 0.3, this.pos.z, 10);
+          if (this.driver === 'player') {
+            G.audio.crash(Math.min(1, hard / 20));
+            G.camShake = Math.min(1, hard / 25);
+          }
+        }
+        if (this.driver === 'player' && this.airT > 0.9) {
+          G.onStunt?.(this.airT, Math.hypot(this.pos.x - this.takeoff.x, this.pos.z - this.takeoff.z));
+        }
+      }
+    } else {
+      const slopeVy = (gy - (this.lastGy ?? gy)) / Math.max(dt, 1e-3);
+      if (this.pos.y - gy > 0.4 && (this.groundVy ?? 0) > 2) {
+        // ground fell away beneath us after climbing: launch!
+        this.air = true;
+        this.vy = this.groundVy;
+        this.airT = 0;
+        this.takeoff = { x: this.pos.x, z: this.pos.z };
+      } else if (gy > this.pos.y) {
+        this.pos.y += (gy - this.pos.y) * Math.min(1, dt * 14); // curbs + ramp faces
+      } else {
+        this.pos.y += (gy - this.pos.y) * Math.min(1, dt * 12);
+      }
+      this.groundVy = clamp(slopeVy, -30, 30);
+      const slope = clamp(this.groundVy / Math.max(6, Math.abs(vf)), -0.5, 0.5);
+      this.pitch += (-slope * Math.sign(vf || 1) - this.pitch) * Math.min(1, dt * 8);
+    }
+    this.lastGy = gy;
 
     // wheels
     this.wheelSpin += (vf / 0.36) * dt;
@@ -387,14 +491,17 @@ export class Vehicle {
       if (w.front) w.pivot.rotation.y = this.steer * 0.5;
     }
 
-    // body roll for feel
-    this.root.rotation.z = clamp(-vl * 0.015 - yaw * vf * 0.004, -0.12, 0.12);
+    // body roll + pitch for feel
+    this.root.rotation.z = this.isBike
+      ? clamp(-yaw * Math.abs(vf) * 0.045, -0.7, 0.7) // lean into turns
+      : clamp(-vl * 0.015 - yaw * vf * 0.004, -0.12, 0.12);
+    this.root.rotation.x = this.pitch;
     this.syncMesh();
     this.root.rotation.y = this.heading;
 
     // tyre marks + smoke when sliding, locking up or doing a burnout
     const slip = Math.abs(vl);
-    const skidding = this.alive && ((slip > 3.2 && Math.abs(vf) > 4) || (inp.handbrake && Math.abs(vf) > 6) ||
+    const skidding = this.alive && !this.air && ((slip > 3.2 && Math.abs(vf) > 4) || (inp.handbrake && Math.abs(vf) > 6) ||
       (inp.throttle < 0 && vf > 12) || (inp.throttle > 0 && vf > 0 && vf < 7 && s.accel > 15 && this.driver === 'player'));
     for (const w of this.wheels) {
       if (w.front && !(inp.throttle < 0 && vf > 12)) continue;
@@ -491,6 +598,7 @@ export function collideVehicles(list, G) {
               G.fx.sparks((p.x + q.x) / 2, 0.7, (p.z + q.z) / 2, 8);
               if (src) G.audio.crash(Math.min(1, impact / 25));
               G.onVehicleCollision?.(a, b, impact);
+              for (const v of [a, b]) if (v.isBike && v.driver === 'player' && impact > 9) G.onBikeCrash?.(v);
             }
           }
         }

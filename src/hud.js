@@ -1,6 +1,6 @@
 // DOM HUD: minimap, stars, money, weapon, health, messages, big map.
 import { formatMoney, clamp } from './util.js';
-import { WEAPONS } from './player.js';
+import { WEAPONS, WEAPON_ORDER } from './player.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -53,6 +53,13 @@ export class HUD {
     $('objective').innerHTML = text;
     $('objective').style.display = text ? 'block' : 'none';
   }
+  district(name) {
+    const el = $('district');
+    el.textContent = name;
+    el.classList.remove('show');
+    void el.offsetWidth; // restart the CSS animation
+    el.classList.add('show');
+  }
   timer(t) {
     const el = $('timer');
     if (t === null) {
@@ -69,6 +76,44 @@ export class HUD {
   }
   flashStars() {
     this.starFlashT = 2;
+  }
+  fade(on) {
+    $('fade').style.opacity = on ? 1 : 0;
+  }
+  radio(st) {
+    const el = $('radio');
+    el.innerHTML = st.bpm ? `${st.name}<small>${st.genre}</small>` : st.name;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+  }
+  // radial weapon picker; returns nothing, just draws the current state
+  wheel(open, sel) {
+    const el = $('wheel');
+    el.style.display = open ? 'block' : 'none';
+    if (!open) return;
+    const pl = this.G.player;
+    if (!this._wheelBuilt) {
+      this._wheelBuilt = true;
+      WEAPON_ORDER.forEach((k, i) => {
+        const a = (i / WEAPON_ORDER.length) * Math.PI * 2 - Math.PI / 2;
+        const d = document.createElement('div');
+        d.className = 'slot';
+        d.style.left = `calc(50% + ${Math.cos(a) * 150}px)`;
+        d.style.top = `calc(50% + ${Math.sin(a) * 150}px)`;
+        d.dataset.k = k;
+        el.appendChild(d);
+      });
+    }
+    [...el.querySelectorAll('.slot')].forEach((d, i) => {
+      const k = d.dataset.k;
+      const owned = !!pl.weapons[k];
+      const w = pl.weapons[k];
+      const def = WEAPONS[k];
+      d.innerHTML = owned ? `${def.name}${def.melee ? '' : `<small>${w.clip + w.ammo}</small>`}` : '<em>—</em>';
+      d.classList.toggle('sel', i === sel);
+      d.classList.toggle('none', !owned);
+    });
   }
   damageFlash() {
     this.dmgT = 0.35;
@@ -94,6 +139,7 @@ export class HUD {
     if (L.police) out.push({ x: L.police.x, z: L.police.z, color: '#4a7aff', label: 'P' });
     if (L.gunshop) out.push({ x: L.gunshop.x, z: L.gunshop.z, color: '#ff7a3a', label: 'G' });
     out.push(...G.missions.blips);
+    for (const l of G.areas.labels) if (l.landmark && l.blip) out.push({ x: l.x, z: l.z, color: l.blip, label: l.icon });
     const flash = Math.floor(G.time * 4) % 2;
     for (const v of G.vehicles) {
       if (v.isPolice && v.siren) out.push({ x: v.pos.x, z: v.pos.z, color: flash ? '#ff3030' : '#3060ff', small: true });
@@ -214,11 +260,20 @@ export class HUD {
     c.arc(tx(p.x), tz(p.z), 7, 0, Math.PI * 2);
     c.fill();
     c.stroke();
+    // district + landmark names
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    for (const l of this.G.areas.labels) {
+      c.font = l.landmark ? 'italic 11px sans-serif' : 'bold 14px sans-serif';
+      c.lineWidth = 3;
+      c.strokeStyle = 'rgba(0,0,0,0.8)';
+      c.strokeText(l.text.toUpperCase(), tx(l.x), tz(l.z) + (l.landmark ? 12 : 0));
+      c.fillStyle = l.landmark ? '#ffe9a8' : '#ffffff';
+      c.fillText(l.text.toUpperCase(), tx(l.x), tz(l.z) + (l.landmark ? 12 : 0));
+    }
     c.font = 'bold 16px sans-serif';
     c.fillStyle = '#fff';
-    c.textAlign = 'center';
-    c.fillText('NEON BAY', size / 2, 26);
-    c.fillText('Beach ↓', size / 2, size - 14);
+    c.fillText(`NEON BAY  ·  Neon Tokens ${this.G.areas.collected.size}/${this.G.areas.tokens.length}`, size / 2, size - 14);
   }
 
   update(dt) {
@@ -259,6 +314,10 @@ export class HUD {
     $('hp').style.width = clamp(pl.health, 0, 100) + '%';
     $('hp').style.background = pl.health < 25 ? '#e33' : '#4c4';
     $('armor').style.width = clamp(pl.armor, 0, 100) + '%';
+    $('ability').style.width = clamp(G.ability * 100, 0, 100) + '%';
+    $('ability').style.background = G.slowmo ? '#fff3a0' : '#e8c22a';
+    $('charname').textContent = G.character ? G.character.name : '';
+    $('charname').style.color = G.character ? G.character.color : '#fff';
 
     // crosshair
     const armed = !def.melee;

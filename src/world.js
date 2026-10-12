@@ -266,7 +266,33 @@ function makeRoadTexture() {
 
 // --- Merged geometry builder ---------------------------------------------
 
-class GeoBuilder {
+// Named districts (block-index based) and the blocks reserved for landmarks.
+export function districtOf(bi, bj) {
+  if (bi === 0) return 'Ironworks';
+  if (bj === N - 1) return 'Sunset Strip';
+  if (bi >= 6 && bj <= 2) return 'Palm Heights';
+  if (bi >= 1 && bi <= 3 && bj >= 6) return 'Old Town';
+  if (bi >= 2 && bi <= 3 && bj >= 2 && bj <= 4) return 'Lantern Market';
+  if (bi >= 8 && bj >= 4 && bj <= 7) return 'Eastgate';
+  if (Math.max(Math.abs(bi - 4.5), Math.abs(bj - 4.5)) < 2) return 'Downtown';
+  return bj < 4 ? 'Northside' : 'Midtown';
+}
+export const LANDMARK_BLOCKS = {
+  '8,6': 'stadium',
+  '9,4': 'stunt',
+  '2,3': 'market',
+  '2,4': 'market',
+  '1,4': 'gas',
+  '7,7': 'gas',
+  '4,8': 'gas',
+  '3,2': 'construction',
+  '5,5': 'tower',
+  '5,9': 'hotel',
+  '2,7': 'clocktower',
+};
+const CUSTOM_TYPES = new Set(['industrial', 'stadium', 'stunt', 'market', 'gas', 'construction', 'tower', 'hotel', 'clocktower']);
+
+export class GeoBuilder {
   constructor() {
     this.pos = [];
     this.nor = [];
@@ -339,6 +365,7 @@ export class World {
     this.landmarks = {};
     this.lampBulbs = null;
     this.mapFeatures = []; // for minimap: {type, x0,z0,x1,z1,color}
+    this.ramps = []; // stunt ramps that raise the ground (added by areas.js)
     this.build();
   }
 
@@ -370,6 +397,12 @@ export class World {
     return fx < r || fx > CELL - r || fz < r || fz > CELL - r;
   }
   groundHeight(x, z) {
+    for (const r of this.ramps) {
+      if (x < r.x0 || x > r.x1 || z < r.z0 || z > r.z1) continue;
+      const t = r.axis === 'x' ? (x - r.x0) / (r.x1 - r.x0) : (z - r.z0) / (r.z1 - r.z0);
+      const k = r.dir > 0 ? t : 1 - t;
+      return r.base + r.h * (r.flat ? 1 : k);
+    }
     if (z > PIER.z0 && Math.abs(x - PIER.x) < PIER.w / 2 && z < PIER.z1) {
       return Math.min(PIER.deck, ((z - PIER.z0) / 10) * PIER.deck);
     }
@@ -529,9 +562,16 @@ export class World {
         const z0 = -HALF + bj * CELL + ROAD / 2;
         const dc = Math.max(Math.abs(bi - 4.5), Math.abs(bj - 4.5));
         let type = dc < 2 ? 'downtown' : dc < 3.5 ? 'commercial' : 'residential';
-        if (special[`${bi},${bj}`]) type = special[`${bi},${bj}`];
-        else if ((bi === 4 && bj === 4) || (bi === 6 && bj === 1) || (bi === 1 && bj === 8) || rng() < 0.08) type = 'park';
-        this.blocks.push({ bi, bj, x0, z0, x1: x0 + BLOCK, z1: z0 + BLOCK, type });
+        const parkRoll = rng();
+        const key = `${bi},${bj}`;
+        if (special[key]) type = special[key];
+        else if (LANDMARK_BLOCKS[key]) type = LANDMARK_BLOCKS[key];
+        else if (bi === 0) type = 'industrial';
+        else if (bj === N - 1) type = 'strip';
+        else if (bi >= 6 && bj <= 2) type = 'mansion';
+        else if (bi >= 1 && bi <= 3 && bj >= 6 && bj <= 8) type = 'oldtown';
+        else if ((bi === 4 && bj === 4) || (bi === 6 && bj === 1) || (bi === 1 && bj === 8) || parkRoll < 0.08) type = 'park';
+        this.blocks.push({ bi, bj, x0, z0, x1: x0 + BLOCK, z1: z0 + BLOCK, type, district: districtOf(bi, bj) });
       }
     }
 
@@ -540,6 +580,9 @@ export class World {
       downtown: [0x8fa3b8, 0x6f8094, 0xb9c4cf, 0x9fb3a5, 0x7d8ea6, 0xc8b8a0, 0x5d6b7c],
       commercial: [0xc29a72, 0xa86f5a, 0xd7c09b, 0x9c8c7a, 0xbfa58a, 0x8a9a8f, 0xd0a080],
       residential: [0xf0e0c0, 0xe8c8a8, 0xc8d8e0, 0xf8f0e0, 0xd8c0d0, 0xb8d0b0, 0xf0d0a0],
+      mansion: [0xffffff, 0xf4efe6, 0xeae4da, 0xf0f4f8],
+      oldtown: [0xa8583a, 0x9a4a32, 0xb87048, 0x8a5a3a, 0xc08a5a],
+      strip: [0x2a2a3a, 0x3a2a4a, 0x1a2a3a, 0x4a3a5a, 0xe8d8c8],
     };
     const neonCols = [0xff2bd6, 0x2bf0ff, 0xffd02b, 0x7cff4a, 0xff5a2b];
     const trees = [];
@@ -557,14 +600,17 @@ export class World {
         awnings.push([x0 - p, z0 - p, x1 + p, z1 + p, sh, opts.awning]);
       }
     };
-    const pickBld = (type) => (type === 'downtown' ? (rng() < 0.5 ? 'glass' : 'office') : rng() < 0.55 ? 'brick' : 'office');
+    const pickBld = (type) => (type === 'downtown' ? (rng() < 0.5 ? 'glass' : 'office') : type === 'oldtown' ? 'brick' : type === 'strip' ? (rng() < 0.5 ? 'glass' : 'office') : rng() < 0.55 ? 'brick' : 'office');
 
     for (const b of this.blocks) {
       const { x0, z0, x1, z1, type } = b;
       // sidewalk slab (tiled) with a darker curb edge
       walk.slab(x0, 0, z0, x1, CURB, z1, sidewalkCol, 3);
       const ix0 = x0 + SIDEWALK, iz0 = z0 + SIDEWALK, ix1 = x1 - SIDEWALK, iz1 = z1 - SIDEWALK;
-      const featureColor = { downtown: '#59606b', commercial: '#6b625a', residential: '#4b6a45', park: '#3f7a3a' }[type] || '#666';
+      const featureColor = {
+        downtown: '#59606b', commercial: '#6b625a', residential: '#4b6a45', park: '#3f7a3a', industrial: '#5a5650', mansion: '#58784a',
+        oldtown: '#6e5446', strip: '#5a4a66', stadium: '#4a6a4a', stunt: '#7a7670', market: '#7a5a4a', gas: '#5a5a5e', construction: '#7a6a50', tower: '#59606b', hotel: '#5a4a66', clocktower: '#6e5446',
+      }[type] || '#666';
       this.mapFeatures.push({ x0, z0, x1, z1, color: featureColor });
 
       if (type === 'park') {
@@ -611,7 +657,36 @@ export class World {
         continue;
       }
 
-      const colors = pal[type];
+      if (CUSTOM_TYPES.has(type)) {
+        const gcol = { industrial: 0x6a6660, stadium: 0x7a7a7e, stunt: 0x9a968e, market: 0xa08a70, gas: 0x4a4a4e, construction: 0x8a7458, tower: 0x8a8a8e, hotel: 0x6a6070, clocktower: 0x9a8a78 }[type];
+        plain.flat(ix0, iz0, ix1, iz1, CURB + 0.01, C(gcol), 0, 0, 0, 0);
+        continue;
+      }
+      if (type === 'mansion') {
+        // Palm Heights: big white villas with pools and hedges
+        grass.flat(ix0, iz0, ix1, iz1, CURB + 0.01, C(0x5fa04a));
+        const lw = (ix1 - ix0) / 2, ld = (iz1 - iz0) / 2;
+        b.pools = [];
+        for (let a = 0; a < 2; a++) {
+          for (let c = 0; c < 2; c++) {
+            const lx0 = ix0 + a * lw, lz0 = iz0 + c * ld;
+            const col = pal.mansion[Math.floor(rng() * pal.mansion.length)];
+            const h1 = 7 + rng() * 2;
+            addBuilding(lx0 + 4, lz0 + 4, lx0 + lw - 9, lz0 + ld - 12, h1, col, { style: 'glass', us: 1 / 30, vs: 1 / 14 });
+            addBuilding(lx0 + 8, lz0 + 4, lx0 + lw - 4, lz0 + ld - 16, h1 + 4, col, { style: 'house', us: 1 / 22, vs: 1 / 24 });
+            plain.box(lx0 + 3.5, h1, lz0 + 3.5, lx0 + lw - 8.5, h1 + 0.4, lz0 + ld - 11.5, C(0xdedad2));
+            // pool + deck in the back yard
+            const px0 = lx0 + 5, pz0 = lz0 + ld - 10, px1 = lx0 + lw - 6, pz1 = lz0 + ld - 4;
+            plain.box(px0 - 1, CURB, pz0 - 1, px1 + 1, CURB + 0.12, pz1 + 1, C(0xd8cdb8), 0, 0);
+            b.pools.push({ x0: px0, z0: pz0, x1: px1, z1: pz1 });
+            // hedges along the lot edge
+            plain.box(lx0 + 1, CURB, lz0 + 0.5, lx0 + lw - 1, CURB + 1.2, lz0 + 1.3, C(0x2f6a2a));
+            trees.push([lx0 + lw - 3, lz0 + 3, 1.1]);
+          }
+        }
+        continue;
+      }
+      const colors = pal[type] || pal.commercial;
       if (type === 'residential') {
         grass.flat(ix0, iz0, ix1, iz1, CURB + 0.01, C(0x5f9a4a));
         const lots = 3, lw = (ix1 - ix0) / lots, ld = (iz1 - iz0) / lots;
@@ -650,11 +725,11 @@ export class World {
           const m = big ? 6 : 1.5 + rng() * 3;
           const h = type === 'downtown'
             ? (big ? 110 + rng() * 60 : 35 + rng() * 85)
-            : 12 + rng() * 28;
+            : type === 'oldtown' ? 9 + rng() * 9 : type === 'strip' ? 10 + rng() * 22 : 12 + rng() * 28;
           const col = colors[Math.floor(rng() * colors.length)];
           const bx0 = lx0 + m, bz0 = lz0 + m, bx1 = lx0 + lw - m, bz1 = lz0 + ld - m;
           const style = pickBld(type);
-          const store = type === 'commercial' ? rng() < 0.85 : rng() < 0.45;
+          const store = type === 'commercial' || type === 'strip' || type === 'oldtown' ? rng() < 0.9 : rng() < 0.45;
           addBuilding(bx0, bz0, bx1, bz1, h, col, { style, store, awning: neonCols[Math.floor(rng() * neonCols.length)] });
           b.roofs = b.roofs || [];
           b.roofs.push({ x0: bx0, z0: bz0, x1: bx1, z1: bz1, h });
@@ -684,7 +759,17 @@ export class World {
             }
           }
           // neon trim on commercial / some downtown buildings
-          if (type === 'commercial' ? rng() < 0.75 : rng() < 0.35) {
+          if (type === 'strip') {
+            // Sunset Strip: stacked neon bands + a vertical blade sign on every building
+            for (let k = 0; k < 3; k++) {
+              const nc = C(neonCols[Math.floor(rng() * neonCols.length)]);
+              const y = 6 + k * 4 + rng() * 1.5;
+              neon.box(bx0 + 1, y, bz1 + 0.3, bx1 - 1, y + 0.5, bz1 + 0.55, nc);
+              neon.box(bx0 - 0.55, y, bz0 + 1, bx0 - 0.3, y + 0.5, bz1 - 1, nc);
+            }
+            const vc = C(neonCols[Math.floor(rng() * neonCols.length)]);
+            neon.box(bx1 - 2, 6, bz1 + 0.3, bx1 - 1.4, Math.min(h - 1, 20), bz1 + 1.6, vc);
+          } else if (type === 'commercial' || type === 'oldtown' ? rng() < 0.75 : rng() < 0.35) {
             const nc = C(neonCols[Math.floor(rng() * neonCols.length)]);
             const y = 4 + rng() * 2;
             const t = 0.25;
