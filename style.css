@@ -1,0 +1,57 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; color: #fff; user-select: none; }
+#game canvas { display: block; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; }
+body.down #minimapwrap, body.down #topright { opacity: 0.4; }
+
+#topright { position: absolute; top: 18px; right: 24px; text-align: right; text-shadow: 2px 2px 0 #000, 0 0 6px #000; }
+#clock { font-size: 22px; font-weight: bold; letter-spacing: 1px; }
+#money { font-size: 34px; font-weight: bold; color: #7ddc6c; letter-spacing: 1px; }
+#moneypop { font-size: 20px; color: #a6ff94; opacity: 0; transition: opacity .4s; height: 22px; }
+#weapon { font-size: 20px; margin-top: 4px; }
+#weapon span { font-size: 24px; font-weight: bold; margin-left: 6px; }
+#weapon small { font-size: 15px; opacity: .8; }
+#weapon em { color: #ffcc44; font-size: 14px; }
+#stars { margin-top: 4px; font-size: 32px; letter-spacing: 2px; }
+#stars span { color: rgba(0,0,0,0.35); -webkit-text-stroke: 1px rgba(255,255,255,0.5); }
+#stars span.on { color: #fff; -webkit-text-stroke: 0; }
+#stars span.on.dim { color: rgba(255,255,255,0.25); }
+
+#minimapwrap { position: absolute; left: 24px; bottom: 24px; width: 210px; }
+#minimap { width: 210px; height: 210px; border-radius: 50%; border: 4px solid rgba(0,0,0,0.75); box-shadow: 0 0 12px rgba(0,0,0,0.6); display: block; }
+.bar { height: 9px; background: rgba(0,0,0,0.6); margin-top: 6px; border: 2px solid rgba(0,0,0,0.7); }
+.bar i { display: block; height: 100%; width: 100%; background: #4c4; transition: width .2s; }
+.bar.armor i { background: #3a8cff; }
+
+#notify { position: absolute; top: 18px; left: 24px; max-width: 360px; background: rgba(0,0,0,0.72); padding: 12px 16px; font-size: 15px; line-height: 1.4; border-radius: 4px; opacity: 0; transition: opacity .4s; }
+#prompt { position: absolute; top: 120px; left: 24px; max-width: 360px; background: rgba(0,0,0,0.72); padding: 10px 14px; font-size: 15px; border-left: 4px solid #ffcc22; opacity: 0; transition: opacity .15s; }
+#big { position: absolute; top: 34%; width: 100%; text-align: center; font-size: 76px; font-weight: 900; letter-spacing: 4px; text-shadow: 3px 3px 0 #000, 0 0 18px rgba(0,0,0,0.8); opacity: 0; transition: opacity .6s; font-style: italic; }
+#big small { display: block; font-size: 30px; color: #fff; letter-spacing: 1px; font-style: normal; }
+#subtitle { position: absolute; bottom: 90px; width: 100%; text-align: center; font-size: 19px; text-shadow: 2px 2px 0 #000; opacity: 0; transition: opacity .4s; padding: 0 20%; }
+#objective { position: absolute; bottom: 40px; width: 100%; text-align: center; font-size: 20px; text-shadow: 2px 2px 0 #000; display: none; }
+#objective b { color: #ffcc22; }
+#timer { position: absolute; top: 210px; right: 24px; font-size: 30px; font-weight: bold; text-shadow: 2px 2px 0 #000; display: none; background: rgba(0,0,0,0.5); padding: 2px 12px; }
+#vehname { position: absolute; bottom: 70px; right: 30px; font-size: 40px; font-style: italic; font-weight: 900; color: #ffcc22; text-shadow: 3px 3px 0 #000; opacity: 0; transition: opacity .5s; }
+#speedo { position: absolute; bottom: 24px; right: 30px; font-size: 38px; font-weight: bold; text-shadow: 2px 2px 0 #000; display: none; text-align: right; }
+#speedo small { font-size: 16px; }
+#speedo .vh { width: 140px; height: 7px; background: rgba(0,0,0,0.6); margin-top: 4px; margin-left: auto; }
+#speedo .vh i { display: block; height: 100%; background: #e8a33a; }
+#crosshair { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1.5px #000; display: none; }
+#crosshair.aim { width: 22px; height: 22px; margin: -11px 0 0 -11px; background: transparent; border: 2px solid #fff; box-shadow: 0 0 0 1px #000, inset 0 0 0 1px #000; }
+#damage { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(200,0,0,0.85) 100%); opacity: 0; }
+
+#bigmap { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: none; align-items: center; justify-content: center; pointer-events: none; }
+#bigmapcanvas { border: 4px solid #000; box-shadow: 0 0 30px #000; }
+
+#overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 30% 20%, rgba(255,60,200,0.35), transparent 60%), radial-gradient(ellipse at 80% 90%, rgba(40,220,255,0.3), transparent 60%), rgba(5,5,15,0.82); }
+.panel { text-align: center; max-width: 560px; padding: 30px 40px; }
+.panel h1 { font-size: 88px; margin: 0; letter-spacing: 6px; font-style: italic; font-weight: 900; color: #ff4fd8; text-shadow: 0 0 24px rgba(255,79,216,0.8), 4px 4px 0 #000; }
+.panel h1 span { color: #34e4ff; text-shadow: 0 0 24px rgba(52,228,255,0.8), 4px 4px 0 #000; }
+.tag { margin: 4px 0 24px; opacity: .85; letter-spacing: 3px; text-transform: uppercase; font-size: 14px; }
+.controls { display: grid; gap: 6px; font-size: 15px; background: rgba(0,0,0,0.45); padding: 16px; border-radius: 6px; text-align: left; }
+.controls b { color: #ffcc22; display: inline-block; min-width: 40px; }
+#start-btn { margin-top: 24px; font-size: 26px; font-weight: bold; padding: 12px 56px; border: none; border-radius: 4px; background: #ffcc22; color: #111; cursor: pointer; letter-spacing: 2px; text-transform: uppercase; box-shadow: 0 6px 0 #a07a00; }
+#start-btn:hover { background: #ffe066; }
+#start-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 #a07a00; }
+.hint { opacity: .7; font-size: 13px; margin-top: 18px; }
