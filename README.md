@@ -13,6 +13,14 @@ python3 -m http.server 8000
 
 (Opening `index.html` straight from disk won't work, because browsers block ES modules on `file://`.)
 
+### Publish it online (GitHub Pages)
+
+The repo includes a workflow (`.github/workflows/pages.yml`) that publishes the game every time `main` changes. To turn it on once:
+
+1. Go to **Settings**, then **Pages**, and set **Source** to **GitHub Actions**. No Save button is needed.
+2. Merge anything into `main`, or open the **Actions** tab and run **Deploy to GitHub Pages** by hand.
+3. The game will be live at `https://<your-username>.github.io/<repo-name>/`.
+
 ## Controls
 
 | Key | Action |
