@@ -53,6 +53,13 @@ export class HUD {
     $('objective').innerHTML = text;
     $('objective').style.display = text ? 'block' : 'none';
   }
+  district(name) {
+    const el = $('district');
+    el.textContent = name;
+    el.classList.remove('show');
+    void el.offsetWidth; // restart the CSS animation
+    el.classList.add('show');
+  }
   timer(t) {
     const el = $('timer');
     if (t === null) {
@@ -94,6 +101,7 @@ export class HUD {
     if (L.police) out.push({ x: L.police.x, z: L.police.z, color: '#4a7aff', label: 'P' });
     if (L.gunshop) out.push({ x: L.gunshop.x, z: L.gunshop.z, color: '#ff7a3a', label: 'G' });
     out.push(...G.missions.blips);
+    for (const l of G.areas.labels) if (l.landmark && l.blip) out.push({ x: l.x, z: l.z, color: l.blip, label: l.icon });
     const flash = Math.floor(G.time * 4) % 2;
     for (const v of G.vehicles) {
       if (v.isPolice && v.siren) out.push({ x: v.pos.x, z: v.pos.z, color: flash ? '#ff3030' : '#3060ff', small: true });
@@ -214,11 +222,20 @@ export class HUD {
     c.arc(tx(p.x), tz(p.z), 7, 0, Math.PI * 2);
     c.fill();
     c.stroke();
+    // district + landmark names
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    for (const l of this.G.areas.labels) {
+      c.font = l.landmark ? 'italic 11px sans-serif' : 'bold 14px sans-serif';
+      c.lineWidth = 3;
+      c.strokeStyle = 'rgba(0,0,0,0.8)';
+      c.strokeText(l.text.toUpperCase(), tx(l.x), tz(l.z) + (l.landmark ? 12 : 0));
+      c.fillStyle = l.landmark ? '#ffe9a8' : '#ffffff';
+      c.fillText(l.text.toUpperCase(), tx(l.x), tz(l.z) + (l.landmark ? 12 : 0));
+    }
     c.font = 'bold 16px sans-serif';
     c.fillStyle = '#fff';
-    c.textAlign = 'center';
-    c.fillText('NEON BAY', size / 2, 26);
-    c.fillText('Beach ↓', size / 2, size - 14);
+    c.fillText(`NEON BAY  ·  Neon Tokens ${this.G.areas.collected.size}/${this.G.areas.tokens.length}`, size / 2, size - 14);
   }
 
   update(dt) {

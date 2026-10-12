@@ -290,6 +290,11 @@ export class Player {
         hit = { type: 'vehicle', v };
       }
     }
+    const prop = G.areas.rayHit(o, d, best);
+    if (prop && prop.t > tMin) {
+      best = prop.t;
+      hit = { type: 'prop', obj: prop.obj };
+    }
     const heli = G.police.heli;
     if (heli) {
       const r = heli.rayHit(o.x, o.y, o.z, d.x, d.y, d.z);
@@ -312,6 +317,8 @@ export class Player {
       hit.v.damage(def.dmg * 1.6, G, 'player');
       if (hit.v.isPolice) G.wanted.addHeat(0.1, 1);
       if (hit.v.driver instanceof TrafficAI) hit.v.driver.panicT = 10;
+    } else if (hit.type === 'prop') {
+      G.areas.damageProp(hit.obj, def.dmg, 'player');
     } else if (hit.type === 'heli') {
       heli.damage(def.dmg);
     }

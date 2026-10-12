@@ -6,6 +6,7 @@ import { PedManager } from './peds.js';
 import { VehicleManager, TrafficAI } from './traffic.js';
 import { Vehicle, setVehicleEnvIntensity } from './vehicle.js';
 import { Details } from './details.js';
+import { Areas } from './areas.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -158,6 +159,7 @@ for (const m of G.world.reflective) {
   m.needsUpdate = true;
 }
 G.details = new Details(G.world, scene);
+G.areas = new Areas(G);
 G.weather = { rain: params.has('rain') ? 1 : 0, clouds: params.has('rain') ? 1 : 0.2, target: params.has('rain') ? 'rain' : 'clear', timer: 240, flash: 0 };
 G.player = new Player(G);
 G.peds = new PedManager(G);
@@ -173,7 +175,7 @@ G.pickups.setupFixed();
 G.save = () => {
   try {
     const p = G.player;
-    localStorage.setItem('neonbay-save', JSON.stringify({ money: p.money, weapons: p.weapons, cur: p.cur, done: G.missions.givers.map((g) => g.done) }));
+    localStorage.setItem('neonbay-save', JSON.stringify({ money: p.money, weapons: p.weapons, cur: p.cur, done: G.missions.givers.map((g) => g.done), tokens: [...G.areas.collected] }));
   } catch { /* storage unavailable */ }
 };
 try {
@@ -183,6 +185,7 @@ try {
     if (s.weapons) G.player.weapons = s.weapons;
     if (s.cur && G.player.weapons[s.cur]) G.player.cur = s.cur;
     s.done?.forEach((d, i) => G.missions.givers[i] && (G.missions.givers[i].done = d));
+    G.areas.loadCollected(s.tokens);
   }
 } catch { /* ignore corrupted saves */ }
 
@@ -273,8 +276,16 @@ G.explosion = (x, y, z, source) => {
     }
   }
   if (d < R) pl.takeDamage(90 * (1 - d / R) + 10);
+  G.areas.damageArea(x, z, R, source);
   G.panic(x, z, 60);
   if (source === 'player') G.wanted.addHeat(0.5, 1);
+};
+
+G.onStunt = (air, dist) => {
+  const bonus = Math.round(air * 60 + dist * 3);
+  G.player.money += bonus;
+  G.hud.big('STUNT BONUS', `${formatMoney(bonus)} · ${air.toFixed(1)}s · ${Math.round(dist)}m`, 2.5, '#ffc21a');
+  G.audio.pickup();
 };
 
 G.onVehicleCollision = (a, b) => {
@@ -489,6 +500,7 @@ function simulate(dt) {
   updateWeather(dt);
   updateSky(dt);
   G.details.update(dt, G.time, G.night, G.weather.clouds, camera.position);
+  G.areas.update(dt);
   G.player.update(dt);
   G.traffic.update(dt);
   G.peds.update(dt);

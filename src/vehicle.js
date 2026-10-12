@@ -158,6 +158,10 @@ export class Vehicle {
     this.isPolice = typeKey === 'police';
     this.siren = false;
     this.wheelSpin = 0;
+    this.pitch = 0;
+    this.air = false;
+    this.vy = 0;
+    this.airT = 0;
     this.lastHitBy = null;
     this.buildModel();
   }
@@ -165,6 +169,7 @@ export class Vehicle {
   buildModel() {
     const s = this.spec;
     const root = new THREE.Group();
+    root.rotation.order = 'YXZ'; // heading, then pitch, then roll in the car's own frame
     this.bodyMat = new THREE.MeshStandardMaterial({ color: this.color, metalness: 0.55, roughness: 0.28, envMap: Vehicle.envMap, envMapIntensity: 0.9 });
     const add = (geo, m, x, y, z, parent = root, shadow = true) => {
       const mesh = new THREE.Mesh(geo, m);
@@ -376,9 +381,49 @@ export class Vehicle {
       }
     }
 
-    // ground height (curbs)
+    // ground following + airtime off ramps
     const gy = G.world.groundHeight(this.pos.x, this.pos.z);
-    this.pos.y += (gy - this.pos.y) * Math.min(1, dt * 12);
+    if (this.air) {
+      this.vy -= 22 * dt;
+      this.pos.y += this.vy * dt;
+      this.airT += dt;
+      this.pitch += (clamp(-this.vy / Math.max(8, Math.abs(vf)), -0.6, 0.6) - this.pitch) * Math.min(1, dt * 3);
+      if (this.pos.y <= gy) {
+        // landing
+        this.pos.y = gy;
+        const hard = -this.vy;
+        this.air = false;
+        this.vy = 0;
+        if (hard > 9) {
+          this.damage((hard - 9) * 25, G);
+          G.fx.sparks(this.pos.x, 0.3, this.pos.z, 10);
+          if (this.driver === 'player') {
+            G.audio.crash(Math.min(1, hard / 20));
+            G.camShake = Math.min(1, hard / 25);
+          }
+        }
+        if (this.driver === 'player' && this.airT > 0.9) {
+          G.onStunt?.(this.airT, Math.hypot(this.pos.x - this.takeoff.x, this.pos.z - this.takeoff.z));
+        }
+      }
+    } else {
+      const slopeVy = (gy - (this.lastGy ?? gy)) / Math.max(dt, 1e-3);
+      if (this.pos.y - gy > 0.4 && (this.groundVy ?? 0) > 2) {
+        // ground fell away beneath us after climbing: launch!
+        this.air = true;
+        this.vy = this.groundVy;
+        this.airT = 0;
+        this.takeoff = { x: this.pos.x, z: this.pos.z };
+      } else if (gy > this.pos.y) {
+        this.pos.y += (gy - this.pos.y) * Math.min(1, dt * 14); // curbs + ramp faces
+      } else {
+        this.pos.y += (gy - this.pos.y) * Math.min(1, dt * 12);
+      }
+      this.groundVy = clamp(slopeVy, -30, 30);
+      const slope = clamp(this.groundVy / Math.max(6, Math.abs(vf)), -0.5, 0.5);
+      this.pitch += (-slope * Math.sign(vf || 1) - this.pitch) * Math.min(1, dt * 8);
+    }
+    this.lastGy = gy;
 
     // wheels
     this.wheelSpin += (vf / 0.36) * dt;
@@ -387,14 +432,15 @@ export class Vehicle {
       if (w.front) w.pivot.rotation.y = this.steer * 0.5;
     }
 
-    // body roll for feel
+    // body roll + pitch for feel
     this.root.rotation.z = clamp(-vl * 0.015 - yaw * vf * 0.004, -0.12, 0.12);
+    this.root.rotation.x = this.pitch;
     this.syncMesh();
     this.root.rotation.y = this.heading;
 
     // tyre marks + smoke when sliding, locking up or doing a burnout
     const slip = Math.abs(vl);
-    const skidding = this.alive && ((slip > 3.2 && Math.abs(vf) > 4) || (inp.handbrake && Math.abs(vf) > 6) ||
+    const skidding = this.alive && !this.air && ((slip > 3.2 && Math.abs(vf) > 4) || (inp.handbrake && Math.abs(vf) > 6) ||
       (inp.throttle < 0 && vf > 12) || (inp.throttle > 0 && vf > 0 && vf < 7 && s.accel > 15 && this.driver === 'player'));
     for (const w of this.wheels) {
       if (w.front && !(inp.throttle < 0 && vf > 12)) continue;

@@ -35,6 +35,18 @@ python3 -m http.server 8000
 ## Features
 
 - **Procedural city.** A 10×10 grid of blocks: a downtown of skyscrapers, commercial streets with neon trim, suburbs, parks with fountains, and a beach on the south edge. Windows light up at night.
+- **Districts.** Each district has its own look, and its name pops up when you enter: Downtown, Midtown, Northside, Eastgate, the Ironworks freight yard, Palm Heights villas with pools, brick Old Town, the neon-soaked Sunset Strip, Lantern Market, and the beach. The full map (M) labels them all.
+- **Landmarks.**
+  - **Apex Tower:** a 300 m skyscraper with a blinking spire.
+  - **Bay Arena:** a stadium with floodlights. Walk in through the south gate.
+  - **Lucky Star Hotel:** a hotel with a spinning neon star on its roof.
+  - **Old Town clock tower:** its clock shows the in-game time.
+  - **Lantern Market:** stalls strung with lanterns that glow at night.
+  - **Skyline One:** a construction site with a slewing tower crane.
+  - **The coast:** a lighthouse whose beam sweeps the sky at night, a marina with bobbing boats, and hills to the north with a big hillside sign.
+- **Stunts.** Ramps in the Stunt Park and on the beach launch your car into the air. Big airtime pays a stunt bonus.
+- **Gas stations.** Three GoFast Fuel stations, whose pumps explode when shot and can set off the next pump.
+- **Neon Tokens.** 12 hidden collectibles around the landmarks, worth $250 each, plus $5,000 for finding them all. Your progress is saved.
 - **Day/night cycle.** One in-game hour takes 30 seconds. There's a gradient sky with a sun glow, drifting clouds, stars and a moon. At night, street lamps cast pools of light and car headlights light up the road.
 - **Weather.** Clear, cloudy and rainy spells come and go. Rain brings wet, glossy roads, heavier fog, lightning and thunder.
 - **Graphics.** Bloom makes neon, lamps and lit windows glow. Car paint, glass towers and the sea are reflective. There are several building styles (glass towers, office grids, brick, houses) and shops with awnings at street level.
@@ -69,6 +81,7 @@ vendor/addons/    official Three.js add-ons: bloom post-processing, room environ
 src/main.js       renderer, game loop, camera, day/night, global game events
 src/world.js      city generation, facades, roads, water, collision grid, raycasts, map rendering
 src/details.js    traffic lights, street props, billboards, palms, pier + Ferris wheel, clouds
+src/areas.js      districts, landmarks, stunt ramps, gas stations, lighthouse, marina, hills, Neon Tokens
 src/vehicle.js    car models, driving physics, damage, car-vs-car collisions
 src/traffic.js    lane-following traffic AI + vehicle spawning
 src/police.js     wanted level, pursuit AI, helicopter

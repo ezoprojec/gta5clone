@@ -55,3 +55,6 @@ body.down #minimapwrap, body.down #topright { opacity: 0.4; }
 #start-btn:hover { background: #ffe066; }
 #start-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 #a07a00; }
 .hint { opacity: .7; font-size: 13px; margin-top: 18px; }
+#district { position: absolute; bottom: 130px; right: 30px; font-size: 34px; font-weight: 900; font-style: italic; color: #fff; text-shadow: 3px 3px 0 #000, 0 0 14px rgba(255,79,216,0.7); opacity: 0; letter-spacing: 1px; }
+#district.show { animation: districtIn 4s ease forwards; }
+@keyframes districtIn { 0% { opacity: 0; transform: translateX(30px); } 10% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
