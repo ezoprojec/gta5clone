@@ -1,7 +1,9 @@
 // Neon Bay — entry point: renderer, game state, camera, main loop.
 import * as THREE from 'three';
 import { World } from './world.js';
-import { Player } from './player.js';
+import { Player, CHARACTERS, WEAPON_ORDER, WEAPONS } from './player.js';
+import { Projectiles } from './projectiles.js';
+import { Radio } from './radio.js';
 import { PedManager } from './peds.js';
 import { VehicleManager, TrafficAI } from './traffic.js';
 import { Vehicle, setVehicleEnvIntensity } from './vehicle.js';
@@ -170,12 +172,33 @@ G.pickups = new Pickups(G);
 G.missions = new Missions(G);
 G.hud = new HUD(G);
 G.pickups.setupFixed();
+G.projectiles = new Projectiles(G);
+G.radio = new Radio(G.audio);
+G.ability = 1;
+G.slowmo = false;
+G.wheelOpen = false;
+
+// ---------------- playable characters ----------------
+// Each keeps their own position, cash, weapons and health; Z switches between them.
+const charStart = (bi, bj, extra) => {
+  const b = G.world.getBlock(bi, bj);
+  return { x: b.x0 + 8, z: b.z1 - 1.8, heading: 0, health: 100, armor: 0, ...extra };
+};
+G.chars = CHARACTERS.map((c) => ({ ...c }));
+G.chars[1].state = charStart(7, 1, { money: 1200, weapons: { fist: {}, pistol: { clip: 12, ammo: 36 }, smg: { clip: 30, ammo: 60 } }, cur: 'smg' });
+G.chars[2].state = charStart(0, 5, { money: 300, weapons: { fist: {}, bat: {}, shotgun: { clip: 6, ammo: 18 } }, cur: 'bat' });
+G.charIdx = 0;
+G.character = G.chars[0];
 
 // ---------------- save / load ----------------
 G.save = () => {
   try {
     const p = G.player;
-    localStorage.setItem('neonbay-save', JSON.stringify({ money: p.money, weapons: p.weapons, cur: p.cur, done: G.missions.givers.map((g) => g.done), tokens: [...G.areas.collected] }));
+    storeCharState();
+    localStorage.setItem('neonbay-save', JSON.stringify({
+      money: p.money, weapons: p.weapons, cur: p.cur, done: G.missions.givers.map((g) => g.done), tokens: [...G.areas.collected],
+      charIdx: G.charIdx, chars: G.chars.map((c) => c.state || null),
+    }));
   } catch { /* storage unavailable */ }
 };
 try {
@@ -186,6 +209,8 @@ try {
     if (s.cur && G.player.weapons[s.cur]) G.player.cur = s.cur;
     s.done?.forEach((d, i) => G.missions.givers[i] && (G.missions.givers[i].done = d));
     G.areas.loadCollected(s.tokens);
+    s.chars?.forEach((st, i) => st && G.chars[i] && (G.chars[i].state = st));
+    if (s.charIdx) G.loadChar = s.charIdx; // applied after spawn
   }
 } catch { /* ignore corrupted saves */ }
 
@@ -200,7 +225,52 @@ try {
   G.traffic.add(car);
   for (let i = 0; i < 12; i++) G.traffic.spawnTraffic(G.player.pos, 30, 160);
   for (let i = 0; i < 25; i++) G.peds.spawnCiv(G.player.pos, 10, 120);
+  // each character gets a ride parked nearby
+  const dana = G.chars[1].state, moe = G.chars[2].state;
+  const sports = new Vehicle('sports', 0xff1fae);
+  sports.place(dana.x + 8, dana.z + 2.2, Math.PI / 2);
+  sports.keep = true;
+  G.traffic.add(sports);
+  const bike = new Vehicle('bike', 0x1a1a1a);
+  bike.place(moe.x + 6, moe.z + 2.2, Math.PI / 2);
+  bike.keep = true;
+  G.traffic.add(bike);
 }
+
+function storeCharState() {
+  const p = G.player;
+  const pos = p.inCar ? p.inCar.pos : p.pos;
+  G.character.state = { x: pos.x, z: pos.z, heading: p.heading, money: p.money, weapons: p.weapons, cur: p.cur, health: p.health, armor: p.armor };
+}
+function applyChar(i) {
+  const p = G.player;
+  if (p.inCar) p.exitCar(true);
+  G.charIdx = i;
+  G.character = G.chars[i];
+  const st = G.character.state;
+  p.setLook(G.character);
+  p.respawnAt(st.x, st.z, st.heading);
+  p.money = st.money;
+  p.weapons = st.weapons;
+  p.cur = p.weapons[st.cur] ? st.cur : 'fist';
+  p.health = st.health || 100;
+  p.armor = st.armor || 0;
+  G.camYaw = st.heading;
+}
+G.switching = null;
+function startSwitch() {
+  const p = G.player;
+  if (G.switching || !p.alive) return;
+  if (G.wanted.stars > 0) return G.hud.notify("You can't switch while the cops are after you.", 2.5);
+  if (G.missions.active) return G.hud.notify("Finish the mission before switching.", 2.5);
+  storeCharState();
+  const next = (G.charIdx + 1) % G.chars.length;
+  const to = G.chars[next].state;
+  G.switching = { t: 0, from: camera.position.clone(), to: new THREE.Vector3(to.x, 0, to.z), next, swapped: false };
+  G.audio.noiseBurst?.(1.2, 600, 0.4, 'bandpass');
+}
+if (G.loadChar) applyChar(G.loadChar);
+
 
 // ---------------- global events ----------------
 G.panic = (x, z, r) => {
@@ -287,6 +357,73 @@ G.onStunt = (air, dist) => {
   G.hud.big('STUNT BONUS', `${formatMoney(bonus)} · ${air.toFixed(1)}s · ${Math.round(dist)}m`, 2.5, '#ffc21a');
   G.audio.pickup();
 };
+
+G.onBikeCrash = (v) => {
+  if (G.player.inCar === v) G.player.ejectFromBike(v);
+};
+G.onEnterVehicle = (v) => {
+  if (!v.isPolice) setTimeout(() => G.player.inCar === v && G.hud.radio(G.radio.current), 900);
+};
+
+// ---------------- cheat codes (type them while playing) ----------------
+const CHEATS = {
+  PATCHMEUP: ['Full health and armor', () => { G.player.health = 100; G.player.armor = 100; }],
+  LOCKNLOAD: ['Weapons and ammo', () => {
+    for (const k of WEAPON_ORDER) {
+      if (WEAPONS[k].melee) G.player.weapons[k] = {};
+      else {
+        const w = (G.player.weapons[k] ||= { clip: 0, ammo: 0 });
+        w.ammo += WEAPONS[k].clip * 6;
+        if (!w.clip) w.clip = WEAPONS[k].clip;
+      }
+    }
+  }],
+  CLEANSLATE: ['Wanted level cleared', () => { G.wanted.clear(); G.police.standDown(); }],
+  BRINGTHEHEAT: ['Wanted level up', () => G.wanted.addHeat(2)],
+  SHOWROOM: ['Sports car delivered', () => spawnInFront('sports')],
+  TWOWHEELS: ['Motorcycle delivered', () => spawnInFront('bike')],
+  STORMFRONT: ['Storm incoming', () => { G.weather.target = 'rain'; G.weather.timer = 300; }],
+  BLUESKIES: ['Clear skies', () => { G.weather.target = 'clear'; G.weather.timer = 300; }],
+  RECHARGE: ['Ability recharged', () => { G.ability = 1; }],
+};
+function spawnInFront(type) {
+  const p = G.player;
+  const x = p.pos.x + Math.sin(p.heading) * 5, z = p.pos.z + Math.cos(p.heading) * 5;
+  const v = new Vehicle(type);
+  v.place(x, z, p.heading + Math.PI / 2);
+  G.traffic.add(v);
+}
+// ` opens a small console; type a code and press Enter
+const cheatBox = document.getElementById('cheat');
+addEventListener('keydown', (e) => {
+  if (e.code !== 'Backquote' || !G.started || e.target === cheatBox) return;
+  e.preventDefault();
+  cheatBox.value = '';
+  cheatBox.style.display = 'block';
+  G.input.keys.clear();
+  cheatBox.focus();
+});
+cheatBox.addEventListener('keydown', (e) => {
+  e.stopPropagation();
+  if (e.code === 'Escape' || e.code === 'Backquote') {
+    e.preventDefault();
+    cheatBox.blur();
+  }
+  if (e.code !== 'Enter') return;
+  const code = cheatBox.value.toUpperCase().replace(/[^A-Z]/g, '');
+  const cheat = CHEATS[code];
+  if (cheat) {
+    cheat[1]();
+    G.hud.notify(`Cheat activated: ${cheat[0]}`, 3);
+    G.audio.pickup();
+  } else G.hud.notify('Nothing happened.', 2);
+  cheatBox.blur();
+});
+cheatBox.addEventListener('blur', () => {
+  cheatBox.style.display = 'none';
+  if (G.started && !G.paused) G.input.lock();
+});
+G.applyCheat = (code) => CHEATS[code]?.[1]();
 
 G.onVehicleCollision = (a, b) => {
   const pc = G.player.inCar;
@@ -434,7 +571,35 @@ function updateSky(dt) {
 const camTarget = new THREE.Vector3();
 const camPos = new THREE.Vector3();
 let camDist = 6;
+function switchCamera(dt) {
+  const S = G.switching;
+  S.t += dt;
+  const H = 260;
+  const ease = (x) => x * x * (3 - 2 * x);
+  let p;
+  if (S.t < 1.1) p = new THREE.Vector3().lerpVectors(S.from, new THREE.Vector3(S.from.x, H, S.from.z), ease(S.t / 1.1));
+  else if (S.t < 2.1) {
+    if (!S.swapped) {
+      S.swapped = true;
+      applyChar(S.next);
+      G.hud.big(G.character.name, G.character.tag, 2.5, G.character.color);
+    }
+    p = new THREE.Vector3(S.from.x, H, S.from.z).lerp(new THREE.Vector3(S.to.x, H, S.to.z), ease((S.t - 1.1) / 1.0));
+  } else {
+    const k = ease(Math.min(1, (S.t - 2.1) / 1.1));
+    const end = new THREE.Vector3(S.to.x - Math.sin(G.camYaw) * 5, 3, S.to.z - Math.cos(G.camYaw) * 5);
+    p = new THREE.Vector3(S.to.x, H, S.to.z).lerp(end, k);
+  }
+  camera.position.copy(p);
+  camera.lookAt(S.t < 2.1 ? p.x : S.to.x, 0, (S.t < 2.1 ? p.z : S.to.z) + 0.01);
+  if (S.t > 3.2) {
+    G.switching = null;
+    camDist = 5;
+  }
+}
+
 function updateCamera(dt) {
+  if (G.switching) return switchCamera(dt);
   const inp = G.input;
   const pl = G.player;
   const sens = 0.0024 * (pl.aiming ? 0.6 : 1);
@@ -501,7 +666,8 @@ function simulate(dt) {
   updateSky(dt);
   G.details.update(dt, G.time, G.night, G.weather.clouds, camera.position);
   G.areas.update(dt);
-  G.player.update(dt);
+  if (!G.switching) G.player.update(dt);
+  G.projectiles.update(dt);
   G.traffic.update(dt);
   G.peds.update(dt);
   G.police.update(dt);
@@ -558,7 +724,56 @@ function frame() {
     G.hud.notify(`Graphics: ${QUALITY[quality].name}`, 2);
   }
 
-  if (!G.paused) simulate(dt);
+  if (!G.paused && G.started) {
+    const pl = G.player;
+    // weapon wheel (hold Tab): slows time, mouse picks a slot
+    const wantWheel = inp.down('Tab') && pl.alive && !G.switching;
+    if (wantWheel && !G.wheelOpen) {
+      G.wheelOpen = true;
+      G.wheelVec = { x: 0, y: 0 };
+      G.wheelSel = WEAPON_ORDER.indexOf(pl.cur);
+    }
+    if (G.wheelOpen) {
+      G.wheelVec.x += inp.mouse.dx;
+      G.wheelVec.y += inp.mouse.dy;
+      inp.mouse.dx = inp.mouse.dy = 0;
+      if (inp.mouse.wheel) G.wheelSel = (G.wheelSel + Math.sign(inp.mouse.wheel) + WEAPON_ORDER.length) % WEAPON_ORDER.length;
+      const len = Math.hypot(G.wheelVec.x, G.wheelVec.y);
+      if (len > 40) {
+        let a = Math.atan2(G.wheelVec.y, G.wheelVec.x) + Math.PI / 2;
+        if (a < 0) a += Math.PI * 2;
+        G.wheelSel = Math.round((a / (Math.PI * 2)) * WEAPON_ORDER.length) % WEAPON_ORDER.length;
+        if (len > 120) {
+          G.wheelVec.x *= 120 / len;
+          G.wheelVec.y *= 120 / len;
+        }
+      }
+      if (!wantWheel) {
+        G.wheelOpen = false;
+        const k = WEAPON_ORDER[G.wheelSel];
+        if (pl.weapons[k]) {
+          pl.cur = k;
+          pl.reloadT = 0;
+        }
+      }
+    }
+    G.hud.wheel(G.wheelOpen, G.wheelSel);
+    // slow-motion special ability (X)
+    if (inp.hit('KeyX')) {
+      if (G.slowmo) G.slowmo = false;
+      else if (G.ability > 0.15) G.slowmo = true;
+    }
+    if (G.slowmo) {
+      G.ability -= dt / 7;
+      if (G.ability <= 0) G.slowmo = false;
+    } else G.ability = Math.min(1, G.ability + dt / 60);
+    // character switch + radio
+    if (inp.hit('KeyZ')) startSwitch();
+    if (pl.inCar && inp.hit('KeyQ')) G.hud.radio(G.radio.next());
+    G.radio.update(!!pl.inCar && pl.alive);
+  }
+  const timeScale = G.wheelOpen ? 0.15 : G.slowmo ? 0.35 : 1;
+  if (!G.paused) simulate(dt * timeScale);
   updateCamera(G.paused ? 0 : dt);
   G.hud.update(G.paused ? 0 : dt);
   if (QUALITY[quality].bloom) composer.render();

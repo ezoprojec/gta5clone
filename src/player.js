@@ -7,14 +7,26 @@ import { TrafficAI } from './traffic.js';
 import { clamp, wrapAngle, headingTo, rand } from './util.js';
 
 export const WEAPONS = {
-  fist: { name: 'Fists', melee: true, rate: 0.45, dmg: 22 },
+  fist: { name: 'Fists', melee: true, rate: 0.45, dmg: 22, reach: 1.9 },
+  bat: { name: 'Baseball Bat', melee: true, rate: 0.6, dmg: 45, reach: 2.4, knock: true },
   pistol: { name: 'Pistol', dmg: 34, rate: 0.22, clip: 12, spread: 0.012, range: 160, auto: false },
   smg: { name: 'SMG', dmg: 19, rate: 0.075, clip: 30, spread: 0.035, range: 130, auto: true },
   shotgun: { name: 'Shotgun', dmg: 17, pellets: 8, rate: 0.85, clip: 6, spread: 0.075, range: 50, auto: false, heavy: true },
+  grenade: { name: 'Grenades', throwable: true, rate: 0.9, clip: 1, heavy: true },
+  rpg: { name: 'Rocket Launcher', rocket: true, rate: 1.4, clip: 1, heavy: true },
 };
-export const WEAPON_ORDER = ['fist', 'pistol', 'smg', 'shotgun'];
+export const WEAPON_ORDER = ['fist', 'bat', 'pistol', 'smg', 'shotgun', 'grenade', 'rpg'];
 
-const PLAYER_LOOK = { skin: 0xc68642, shirt: 0x2e5e4e, sleeve: 0x2e5e4e, pants: 0x2b3448, hair: 0x161616, belt: 0x3a2a1a };
+// The three playable characters (all original to this game).
+export const CHARACTERS = [
+  { id: 'rico', name: 'Rico Vance', tag: 'Getaway driver', color: '#4fd88a',
+    look: { skin: 0xc68642, shirt: 0x2e5e4e, sleeve: 0x2e5e4e, pants: 0x2b3448, hair: 0x161616, belt: 0x3a2a1a, hairStyle: 'short' } },
+  { id: 'dana', name: 'Dana Reyes', tag: 'Hacker', color: '#4fb8ff',
+    look: { skin: 0xe0ac69, shirt: 0x1fb0b0, jacket: 0x1a1a1a, pants: 0x222230, hair: 0x7a1a1a, shoes: 0xeeeeee, slim: true, hairStyle: 'long' } },
+  { id: 'moe', name: 'Big Moe', tag: 'Biker', color: '#ffb04f', scale: 1.1,
+    look: { skin: 0xf1c27d, shirt: 0x8a8a8a, jacket: 0x4a2a18, pants: 0x1c2a40, hair: 0x5a3a20, shoes: 0x3a2a1a, hairStyle: 'bald', cap: 0x1a1a1a } },
+];
+const PLAYER_LOOK = CHARACTERS[0].look;
 
 export class Player {
   constructor(G) {
@@ -51,8 +63,8 @@ export class Player {
     if (!this.weapons[key]) this.weapons[key] = { clip: 0, ammo: 0 };
     const w = this.weapons[key];
     w.ammo += ammo;
-    if (w.clip === 0) this.reload(true);
     this.cur = key;
+    if (w.clip === 0) this.reload(true);
   }
 
   reload(instant = false) {
@@ -64,7 +76,7 @@ export class Player {
       w.clip += take;
       w.ammo -= take;
     } else if (this.reloadT <= 0) {
-      this.reloadT = def.heavy ? 1.6 : 1.1;
+      this.reloadT = def.throwable ? 0.5 : def.rocket ? 2 : def.heavy ? 1.6 : 1.1;
       this.G.audio.click();
     }
   }
@@ -146,9 +158,9 @@ export class Player {
     // seat our model in the car
     v.root.add(this.model.root);
     poseSeated(this.model);
-    this.model.root.position.set(0.4, 0.05, v.cabinZ + 0.1);
+    this.model.root.position.set(v.seatX ?? 0.4, v.seatY ?? 0.05, v.cabinZ + 0.1);
     this.model.root.rotation.set(0, 0, 0);
-    this.model.root.scale.setScalar(0.92);
+    this.model.root.scale.setScalar(0.92 * (this.charScale || 1));
     this.model.root.traverse((o) => { o.castShadow = false; });
     G.hud.notify(v.spec.name, 1.6, true);
     G.onEnterVehicle?.(v);
@@ -168,7 +180,7 @@ export class Player {
     this.inCar = null;
     v.root.remove(this.model.root);
     G.scene.add(this.model.root);
-    this.model.root.scale.setScalar(1);
+    this.model.root.scale.setScalar(this.charScale || 1);
     this.model.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     const lx = Math.cos(v.heading), lz = -Math.sin(v.heading);
     const off = v.spec.wid / 2 + 0.8;
@@ -205,7 +217,7 @@ export class Player {
       this.punchT = 0.25;
       this.heading = G.camYaw;
       const f = { x: Math.sin(this.heading), z: Math.cos(this.heading) };
-      let best = null, bd = 1.9;
+      let best = null, bd = def.reach;
       for (const p of G.peds.list) {
         if (!p.alive) continue;
         const dx = p.pos.x - this.pos.x, dz = p.pos.z - this.pos.z;
@@ -216,7 +228,7 @@ export class Player {
         G.audio.punch();
         if (best.kind === 'cop') G.wanted.addHeat(0, 1);
         best.takeDamage(def.dmg, 'player', best.pos.x, best.pos.y + 1.5, best.pos.z);
-        if (best.alive && Math.random() < 0.4) {
+        if (best.alive && (def.knock || Math.random() < 0.4)) {
           best.state = 'knocked';
           best.timer = 1.6;
           best.model.body.rotation.x = -Math.PI / 2;
@@ -247,6 +259,33 @@ export class Player {
     const dir = new THREE.Vector3();
     cam.getWorldDirection(dir);
     const muzzle = this.muzzlePoint();
+    if (def.throwable || def.rocket) {
+      // aim point = whatever the crosshair is on, then launch from the hand toward it
+      const r = G.world.raycast(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z, 200);
+      let tAim = r.hit ? r.t : 200;
+      const tMin = muzzle.clone().sub(origin).dot(dir);
+      for (const v of G.vehicles) {
+        if (v === this.inCar) continue;
+        const t = rayVehicle(v, origin.x, origin.y, origin.z, dir.x, dir.y, dir.z);
+        if (t > tMin && t < tAim) tAim = t;
+      }
+      for (const ped of G.peds.list) {
+        const h = ped.alive && ped.rayHit(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z);
+        if (h && h.t > tMin && h.t < tAim) tAim = h.t;
+      }
+      const target = origin.clone().addScaledVector(dir, tAim);
+      const aim = target.sub(muzzle).normalize();
+      if (def.throwable) {
+        G.projectiles.grenade(muzzle, aim.multiplyScalar(19).add(new THREE.Vector3(0, 5, 0)));
+        this.punchT = 0.25;
+      } else {
+        G.projectiles.rocket(muzzle, aim);
+        G.audio.gunshot(0.8, true);
+        G.onGunfire(this.pos.x, this.pos.z);
+      }
+      if (w.clip === 0 && w.ammo > 0) this.reload(true);
+      return;
+    }
     // start the ray at the player's depth so we don't hit things behind us
     const tMin = Math.max(0, muzzle.clone().sub(origin).dot(dir) - 0.5);
     const pellets = def.pellets || 1;
@@ -338,7 +377,7 @@ export class Player {
     if (!this.alive) return;
 
     // weapon switching
-    if (inp.mouse.wheel) this.cycleWeapon(inp.mouse.wheel > 0 ? 1 : -1);
+    if (inp.mouse.wheel && !G.wheelOpen) this.cycleWeapon(inp.mouse.wheel > 0 ? 1 : -1);
     WEAPON_ORDER.forEach((k, i) => {
       if (inp.hit('Digit' + (i + 1)) && this.weapons[k]) {
         this.cur = k;
@@ -457,6 +496,12 @@ export class Player {
     const G = this.G;
     const inp = G.input;
     const v = this.inCar;
+    if (this.inputLocked) {
+      v.input.throttle = 0;
+      v.input.steer = 0;
+      v.input.handbrake = true;
+      return;
+    }
     if (inp.hit('KeyF')) {
       this.exitCar();
       if (!this.inCar) return;
@@ -485,6 +530,29 @@ export class Player {
     // drive-by shooting
     const def = this.weapon;
     if (!def.melee && !def.heavy && (inp.mouse.leftPressed || (def.auto && inp.mouse.left))) this.fire();
+  }
+
+  // Thrown over the handlebars in a bike crash.
+  ejectFromBike(v) {
+    const speed = Math.hypot(v.vel.x, v.vel.z);
+    this.exitCar(true);
+    this.knockT = 1.6;
+    this.vel.set(v.vel.x * 0.6, 0, v.vel.z * 0.6);
+    this.model.body.rotation.x = -Math.PI / 2;
+    this.model.body.position.y = 0.25;
+    this.takeDamage(Math.min(40, speed * 1.2));
+    this.G.hud.notify('Thrown off the bike!', 2);
+  }
+
+  // Swap the visible model for a different character's look.
+  setLook(c) {
+    const G = this.G;
+    const parent = this.model.root.parent;
+    parent?.remove(this.model.root);
+    this.model = makeCharacter(c.look);
+    this.charScale = c.scale || 1;
+    this.model.root.scale.setScalar(this.charScale);
+    G.scene.add(this.model.root);
   }
 
   respawnAt(x, z, heading) {

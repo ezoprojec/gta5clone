@@ -58,3 +58,18 @@ body.down #minimapwrap, body.down #topright { opacity: 0.4; }
 #district { position: absolute; bottom: 130px; right: 30px; font-size: 34px; font-weight: 900; font-style: italic; color: #fff; text-shadow: 3px 3px 0 #000, 0 0 14px rgba(255,79,216,0.7); opacity: 0; letter-spacing: 1px; }
 #district.show { animation: districtIn 4s ease forwards; }
 @keyframes districtIn { 0% { opacity: 0; transform: translateX(30px); } 10% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+.bar.ability { height: 6px; margin-top: 4px; }
+.bar.ability i { background: #e8c22a; }
+#charname { margin-top: 6px; font-weight: 900; font-style: italic; font-size: 16px; text-shadow: 2px 2px 0 #000; }
+#radio { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); text-align: center; font-size: 26px; font-weight: 900; font-style: italic; color: #fff; text-shadow: 2px 2px 0 #000, 0 0 12px rgba(80,200,255,0.7); opacity: 0; }
+#radio small { display: block; font-size: 14px; font-weight: normal; letter-spacing: 3px; text-transform: uppercase; opacity: 0.85; }
+#radio.show { animation: districtIn 3s ease forwards; }
+#wheel { position: absolute; inset: 0; display: none; background: radial-gradient(circle at center, rgba(0,0,0,0.55) 0, rgba(0,0,0,0.25) 260px, transparent 400px); }
+#wheel .hub { position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.4); display: flex; align-items: center; justify-content: center; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; font-size: 13px; }
+#wheel .slot { position: absolute; width: 120px; margin-left: -60px; margin-top: -32px; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.7); border: 2px solid rgba(255,255,255,0.25); border-radius: 8px; font-weight: bold; font-size: 14px; text-align: center; }
+#wheel .slot small { font-size: 12px; color: #ffcc22; }
+#wheel .slot.sel { border-color: #ffcc22; background: rgba(60,45,0,0.85); transform: scale(1.12); }
+#wheel .slot.none { opacity: 0.35; }
+#fade { position: fixed; inset: 0; background: #000; opacity: 0; transition: opacity 0.6s; pointer-events: none; }
+#cheat { position: absolute; left: 50%; bottom: 140px; transform: translateX(-50%); width: 280px; display: none; pointer-events: auto; background: rgba(0,0,0,0.8); color: #7dff7d; border: 2px solid #7dff7d; padding: 10px 14px; font: bold 18px monospace; letter-spacing: 3px; text-transform: uppercase; outline: none; }

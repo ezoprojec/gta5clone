@@ -1,6 +1,6 @@
 // DOM HUD: minimap, stars, money, weapon, health, messages, big map.
 import { formatMoney, clamp } from './util.js';
-import { WEAPONS } from './player.js';
+import { WEAPONS, WEAPON_ORDER } from './player.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -76,6 +76,44 @@ export class HUD {
   }
   flashStars() {
     this.starFlashT = 2;
+  }
+  fade(on) {
+    $('fade').style.opacity = on ? 1 : 0;
+  }
+  radio(st) {
+    const el = $('radio');
+    el.innerHTML = st.bpm ? `${st.name}<small>${st.genre}</small>` : st.name;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+  }
+  // radial weapon picker; returns nothing, just draws the current state
+  wheel(open, sel) {
+    const el = $('wheel');
+    el.style.display = open ? 'block' : 'none';
+    if (!open) return;
+    const pl = this.G.player;
+    if (!this._wheelBuilt) {
+      this._wheelBuilt = true;
+      WEAPON_ORDER.forEach((k, i) => {
+        const a = (i / WEAPON_ORDER.length) * Math.PI * 2 - Math.PI / 2;
+        const d = document.createElement('div');
+        d.className = 'slot';
+        d.style.left = `calc(50% + ${Math.cos(a) * 150}px)`;
+        d.style.top = `calc(50% + ${Math.sin(a) * 150}px)`;
+        d.dataset.k = k;
+        el.appendChild(d);
+      });
+    }
+    [...el.querySelectorAll('.slot')].forEach((d, i) => {
+      const k = d.dataset.k;
+      const owned = !!pl.weapons[k];
+      const w = pl.weapons[k];
+      const def = WEAPONS[k];
+      d.innerHTML = owned ? `${def.name}${def.melee ? '' : `<small>${w.clip + w.ammo}</small>`}` : '<em>—</em>';
+      d.classList.toggle('sel', i === sel);
+      d.classList.toggle('none', !owned);
+    });
   }
   damageFlash() {
     this.dmgT = 0.35;
@@ -276,6 +314,10 @@ export class HUD {
     $('hp').style.width = clamp(pl.health, 0, 100) + '%';
     $('hp').style.background = pl.health < 25 ? '#e33' : '#4c4';
     $('armor').style.width = clamp(pl.armor, 0, 100) + '%';
+    $('ability').style.width = clamp(G.ability * 100, 0, 100) + '%';
+    $('ability').style.background = G.slowmo ? '#fff3a0' : '#e8c22a';
+    $('charname').textContent = G.character ? G.character.name : '';
+    $('charname').style.color = G.character ? G.character.color : '#fff';
 
     // crosshair
     const armed = !def.melee;

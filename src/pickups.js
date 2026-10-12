@@ -86,8 +86,11 @@ export class Pickups {
         { item: 'smg', label: 'SMG + 120 rounds', price: 900 },
         { item: 'shotgun', label: 'Shotgun + 24 shells', price: 1300 },
         { item: 'armor', label: 'Body armor', price: 350 },
+        { item: 'bat', label: 'Baseball bat', price: 60 },
+        { item: 'grenade', label: 'Grenades x5', price: 600 },
+        { item: 'rpg', label: 'Rocket launcher + 4 rockets', price: 2500 },
       ];
-      items.forEach((it, k) => this.add({ type: 'shop', ...it, x: gs.x - 9 + k * 6, z: gs.z - 7 }));
+      items.forEach((it, k) => this.add({ type: 'shop', ...it, x: gs.x - 12 + k * 4, z: gs.z - 7 }));
     }
   }
 
@@ -129,7 +132,7 @@ export class Pickups {
           } else {
             pl.money -= p.price;
             if (p.item === 'armor') pl.armor = 100;
-            else pl.giveWeapon(p.item, p.item === 'pistol' ? 48 : p.item === 'smg' ? 120 : 24);
+            else pl.giveWeapon(p.item, { pistol: 48, smg: 120, shotgun: 24, grenade: 5, rpg: 4, bat: 0 }[p.item]);
             G.audio.pickup();
             G.hud.notify(`Purchased: ${p.label}`);
           }

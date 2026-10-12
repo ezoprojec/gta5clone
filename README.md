@@ -23,8 +23,13 @@ python3 -m http.server 8000
 | Space | Jump / handbrake (drift!) |
 | F | Enter, exit, or carjack a vehicle |
 | LMB / RMB | Shoot / aim (you can shoot from cars too) |
-| Wheel or 1–4 | Switch weapon (fists, pistol, SMG, shotgun) |
+| Wheel or 1–7 | Switch weapon |
 | R | Reload |
+| Tab (hold) | Weapon wheel (time slows while it's open) |
+| X | Slow-motion special ability |
+| Z | Switch character (Rico → Dana → Moe) |
+| Q | Next radio station (in a vehicle) |
+| ` | Cheat console |
 | E | Interact: start missions, buy from the gun shop |
 | H | Horn |
 | G | Toggle siren (in a police car) |
@@ -35,6 +40,14 @@ python3 -m http.server 8000
 ## Features
 
 - **Procedural city.** A 10×10 grid of blocks: a downtown of skyscrapers, commercial streets with neon trim, suburbs, parks with fountains, and a beach on the south edge. Windows light up at night.
+- **Three playable characters.** Rico Vance (getaway driver), Dana Reyes (hacker) and Big Moe (biker). Each has their own location, cash, weapons and ride. Press **Z** to switch, with a swooping sky-cam transition. Switching isn't allowed while you're wanted or on a mission.
+- **Car radio.** Four stations of endlessly generated original music (synthwave, hip-hop, rock and island lounge), plus Radio Off. Press **Q** in a vehicle to change station.
+- **Weapons.** Fists, a baseball bat, pistol, SMG, shotgun, grenades (bounce, then explode) and a rocket launcher, picked with a weapon wheel.
+- **Slow motion.** A special ability (**X**) with a recharging meter under the health bar.
+- **Motorcycles.** The Zephyr 600 shows up in traffic and in parking spots. Bikes lean into turns, and a hard crash throws you over the handlebars.
+- **Quick Coat Paint & Body.** Next to the Eastgate gas station. Drive in while wanted or damaged: for $250 you get a fresh paint job, a full repair, and the cops lose your trail.
+- **Store robberies.** Aim a gun at a GoFast kiosk clerk until they drop the till money. Expect two stars.
+- **Cheat codes.** Press **`** and type one: `PATCHMEUP`, `LOCKNLOAD`, `CLEANSLATE`, `BRINGTHEHEAT`, `SHOWROOM`, `TWOWHEELS`, `STORMFRONT`, `BLUESKIES`, `RECHARGE`.
 - **Districts.** Each district has its own look, and its name pops up when you enter: Downtown, Midtown, Northside, Eastgate, the Ironworks freight yard, Palm Heights villas with pools, brick Old Town, the neon-soaked Sunset Strip, Lantern Market, and the beach. The full map (M) labels them all.
 - **Landmarks.**
   - **Apex Tower:** a 300 m skyscraper with a blinking spire.
@@ -86,7 +99,9 @@ src/vehicle.js    car models, driving physics, damage, car-vs-car collisions
 src/traffic.js    lane-following traffic AI + vehicle spawning
 src/police.js     wanted level, pursuit AI, helicopter
 src/peds.js       pedestrians, cops on foot, mission NPCs
-src/player.js     player movement, carjacking, weapons
+src/player.js     player movement, carjacking, weapons, playable characters
+src/projectiles.js grenades and rockets
+src/radio.js      procedural radio stations
 src/missions.js   mission givers + mission logic
 src/pickups.js    pickups + gun shop
 src/hud.js        HUD, minimap, big map

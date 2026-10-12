@@ -507,6 +507,131 @@ export class Areas {
     this.collider(sx - 0.3, sz - 0.3, sx + 0.3, sz + 0.3, 8);
     if (!this.gasToken) this.gasToken = { x: I.x0 + 3, z: I.z0 + 3 };
     this.label(b, 'Gas', 'F', '#1fa04a');
+    // a shop clerk you can hold up (spawned when you're nearby)
+    this.stores = this.stores || [];
+    this.stores.push({ x: I.cx + 4, z: I.z0 + 10.6, clerk: null, cooldown: 0, progress: 0, name: 'GoFast Kiosk' });
+    this.plain.box(I.cx + 2.5, CURB, I.z0 + 9.2, I.cx + 5.5, CURB + 1.1, I.z0 + 9.9, C(0x1f9a4a), 0, 0);
+    if (b.bi === 7 && b.bj === 7) this.buildPaintShop(b);
+  }
+
+  // ---------------------------------------------------------------- paint & body shop
+  buildPaintShop(b) {
+    const I = this.inner(b);
+    const x0 = I.x1 - 17, x1 = I.x1 - 5, z0 = I.z1 - 13, z1 = I.z1 - 1;
+    const wall = 0x5a6a7a;
+    // three walls + roof, open to the south road
+    this.plain.box(x0, CURB, z0, x1, CURB + 5.5, z0 + 0.4, C(wall), 0, 0);
+    this.plain.box(x0, CURB, z0, x0 + 0.4, CURB + 5.5, z1, C(wall), 0, 0);
+    this.plain.box(x1 - 0.4, CURB, z0, x1, CURB + 5.5, z1, C(wall), 0, 0);
+    this.plain.box(x0 - 0.3, CURB + 5.5, z0 - 0.3, x1 + 0.3, CURB + 6.1, z1 + 0.3, C(0x3a4450), 0, 0);
+    this.collider(x0, z0, x1, z0 + 0.4, 6, false);
+    this.collider(x0, z0, x0 + 0.4, z1, 6, false);
+    this.collider(x1 - 0.4, z0, x1, z1, 6, false);
+    // striped entrance + lit sign
+    for (let k = 0; k < 6; k++) this.neon.box(x0 + 0.4 + k * 1.9, CURB + 5.1, z1 - 0.1, x0 + 1.4 + k * 1.9, CURB + 5.5, z1 + 0.05, C(k % 2 ? 0x111111 : 0xffc21a));
+    const sign = textSign('QUICK COAT  PAINT & BODY', 11, 1.2, { bg: '#1a2a6a', fg: '#ffffff' });
+    sign.position.set((x0 + x1) / 2, CURB + 6.9, z1 + 0.32);
+    this.scene.add(sign);
+    this.paintShop = { x0: x0 + 1, z0: z0 + 1, x1: x1 - 1, z1: z1 - 0.5, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, busy: 0 };
+    this.labels.push({ x: (x0 + x1) / 2, z: (z0 + z1) / 2, text: 'Quick Coat', landmark: true, icon: 'Q', blip: '#ff8a3a' });
+  }
+
+  // drive in -> fresh paint, repaired, wanted level cleared
+  updatePaintShop(dt) {
+    const G = this.G, P = this.paintShop;
+    if (!P) return;
+    const v = G.player.inCar;
+    if (P.busy > 0) {
+      P.busy -= dt;
+      if (P.busy <= 0) {
+        G.hud.fade(false);
+        G.player.inputLocked = false;
+      }
+      return;
+    }
+    if (!v || v.pos.x < P.x0 || v.pos.x > P.x1 || v.pos.z < P.z0 || v.pos.z > P.z1 || Math.abs(v.speed) > 3) return;
+    const dirty = G.wanted.stars > 0 || v.health < v.spec.health;
+    if (!dirty) {
+      G.hud.prompt('Quick Coat: your ride is already looking sharp.');
+      return;
+    }
+    const cost = 250;
+    if (G.player.money < cost) {
+      G.hud.prompt(`A respray costs ${formatMoney(cost)}. Come back with cash.`);
+      return;
+    }
+    G.player.money -= cost;
+    P.busy = 2.2;
+    G.player.inputLocked = true;
+    v.vel.x = v.vel.z = 0;
+    G.hud.fade(true);
+    setTimeout(() => {
+      const col = new THREE.Color().setHSL(Math.random(), 0.7, 0.45);
+      v.bodyMat.color.copy(col);
+      v.health = v.spec.health;
+      v.burnTimer = -1;
+      if (G.wanted.stars > 0) {
+        G.wanted.clear();
+        G.police.standDown();
+        G.hud.big('NEW LOOK', 'Cops lost your trail', 3, '#ffc21a');
+      } else G.hud.big('RESPRAYED', formatMoney(cost), 2.5, '#ffc21a');
+      G.audio.pickup();
+    }, 900);
+  }
+
+  // hold-ups: aim a gun at a shop clerk until they hand over the till
+  updateStores(dt) {
+    const G = this.G, pl = G.player;
+    for (const st of this.stores || []) {
+      st.cooldown -= dt;
+      const d = Math.hypot(pl.pos.x - st.x, pl.pos.z - st.z);
+      if (!st.clerk && d < 120 && st.cooldown <= 0) {
+        st.clerk = G.peds.spawnAt('clerk', st.x, st.z, 'idle');
+        st.clerk.mission = true;
+        st.clerk.idleFace = 0;
+        st.clerk.heading = 0;
+        st.progress = 0;
+      }
+      const c = st.clerk;
+      if (!c) continue;
+      if (d > 180 || !c.alive) {
+        if (!c.alive) st.cooldown = 120;
+        if (d > 180 || c.deadTime > 20) {
+          c.mission = false;
+          if (d > 180) G.peds.remove(c);
+          st.clerk = null;
+        }
+        continue;
+      }
+      if (st.robbed) continue;
+      const armed = !pl.weapon.melee && !pl.inCar && pl.alive;
+      if (armed && pl.aiming && d < 9) {
+        // is the crosshair on the clerk?
+        const o = G.camera.position, dir = new THREE.Vector3();
+        G.camera.getWorldDirection(dir);
+        const hit = c.rayHit(o.x, o.y, o.z, dir.x, dir.y, dir.z);
+        if (hit) {
+          st.progress += dt;
+          c.state = 'idle';
+          c.model.armL.rotation.x = c.model.armR.rotation.x = -2.9; // hands up!
+          if (Math.random() < dt * 2) G.panic(st.x, st.z, 15);
+          G.hud.prompt(`Robbing ${st.name}... ${'▮'.repeat(Math.ceil(st.progress * 4))}${'▯'.repeat(Math.max(0, 10 - Math.ceil(st.progress * 4)))}`);
+          if (st.progress >= 2.5) {
+            st.robbed = true;
+            const cash = 300 + Math.floor(Math.random() * 500);
+            G.pickups.spawnCash(st.x, st.z + 1.5, cash);
+            G.hud.notify(`The clerk dropped the cash: ${formatMoney(cash)}. Grab it and run!`, 4);
+            G.wanted.addHeat(0, 2);
+            c.panic(pl.pos.x, pl.pos.z, 20, true);
+            st.cooldown = 300;
+            setTimeout(() => { st.robbed = false; }, 300000);
+          }
+          continue;
+        }
+      }
+      if (st.progress > 0 && !pl.aiming) st.progress = Math.max(0, st.progress - dt * 0.5);
+      if (d < 4 && !st.progress && pl.alive && !pl.inCar && !pl.weapon.melee) G.hud.prompt('Aim your gun at the clerk to rob the till.');
+    }
   }
 
   // ---------------------------------------------------------------- construction site
@@ -871,6 +996,8 @@ export class Areas {
 
   update(dt) {
     const G = this.G;
+    this.updatePaintShop(dt);
+    this.updateStores(dt);
     const t = G.time, night = G.night;
     const pl = G.player;
     const pp = pl.inCar ? pl.inCar.pos : pl.pos;

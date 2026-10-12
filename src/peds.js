@@ -75,8 +75,9 @@ export class Ped {
     this.state = 'return';
   }
 
-  panic(fromX, fromZ, time = 8) {
+  panic(fromX, fromZ, time = 8, force = false) {
     if (!this.alive || this.kind === 'cop' || this.kind === 'guard') return;
+    if (this.kind === 'clerk' && !force) return; // clerks stay behind the counter
     if (this.state === 'knocked') return;
     this.state = 'flee';
     this.fleeFrom = { x: fromX, z: fromZ };
