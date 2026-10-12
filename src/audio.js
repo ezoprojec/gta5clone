@@ -110,6 +110,10 @@ export class Audio {
     this.noiseBurst(1.4, 500, 1.2 * vol);
     this.tone(45, 0.9, 0.8 * vol, 'sine');
   }
+  thunder() {
+    this.noiseBurst(2.5, 220, 0.9);
+    this.tone(38, 2, 0.5, 'sine');
+  }
   crash(vol = 1) {
     this.noiseBurst(0.3, 900, 0.8 * vol, 'bandpass');
   }

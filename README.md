@@ -29,13 +29,17 @@ python3 -m http.server 8000
 | H | Horn |
 | G | Toggle siren (in a police car) |
 | M | Full-screen map |
+| O | Graphics quality (Low / Medium / High) |
 | P / Esc | Pause |
 
 ## Features
 
 - **Procedural city.** A 10×10 grid of blocks: a downtown of skyscrapers, commercial streets with neon trim, suburbs, parks with fountains, and a beach on the south edge. Windows light up at night.
-- **Day/night cycle.** One in-game hour takes 30 seconds, with dusk skies, stars, a moon, street lamps and headlights.
-- **Vehicles.** Six car types with arcade physics: drifting, body roll, crash damage, smoke, fire and explosions that can chain.
+- **Day/night cycle.** One in-game hour takes 30 seconds. There's a gradient sky with a sun glow, drifting clouds, stars and a moon. At night, street lamps cast pools of light and car headlights light up the road.
+- **Weather.** Clear, cloudy and rainy spells come and go. Rain brings wet, glossy roads, heavier fog, lightning and thunder.
+- **Graphics.** Bloom makes neon, lamps and lit windows glow. Car paint, glass towers and the sea are reflective. There are several building styles (glass towers, office grids, brick, houses) and shops with awnings at street level.
+- **Street life.** Working traffic lights that AI drivers stop for, hydrants, bins, benches, bus shelters, planters, and rooftop billboards for made-up brands. There's also a palm-lined beach road and a pier with a Ferris wheel that lights up at night.
+- **Vehicles.** Six car types with curved bodies, wheel arches, mirrors and plates, and arcade physics: drifting, body roll, skid marks, tire smoke, crash damage, smoke, fire and explosions that can chain.
 - **Traffic.** AI drivers follow lanes and pick random turns at intersections. They brake for obstacles and speed off when there's gunfire.
 - **Pedestrians.** They walk the sidewalks, cross streets, panic, cower, and drop cash.
 - **Wanted level (1–5 stars).** Police chase you on the road grid, ram your car, get out and arrest you at 1 star, and shoot at 2+ stars. A searchlight helicopter joins at 3+ stars and opens fire at 4+. Break line of sight long enough and the stars fade.
@@ -50,6 +54,8 @@ python3 -m http.server 8000
 ## URL flags
 
 - `?night`: start at 22:00
+- `?rain`: keep it raining
+- `?low`: force the Low graphics preset
 - `?fresh`: ignore the saved game
 - `?god`: invulnerable
 - `?autostart`: skip the title screen (used for automated testing)
@@ -59,8 +65,10 @@ python3 -m http.server 8000
 ```
 index.html, style.css     page + HUD markup
 vendor/three.module.min.js  Three.js r160 (MIT, see vendor/THREE_LICENSE)
+vendor/addons/    official Three.js add-ons: bloom post-processing, room environment
 src/main.js       renderer, game loop, camera, day/night, global game events
-src/world.js      city generation, collision grid, raycasts, map rendering
+src/world.js      city generation, facades, roads, water, collision grid, raycasts, map rendering
+src/details.js    traffic lights, street props, billboards, palms, pier + Ferris wheel, clouds
 src/vehicle.js    car models, driving physics, damage, car-vs-car collisions
 src/traffic.js    lane-following traffic AI + vehicle spawning
 src/police.js     wanted level, pursuit AI, helicopter
